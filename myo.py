@@ -57,7 +57,7 @@ async def main():
 
     async with BleakClient(ble_device_uuid) as client:
         # await list_ble_characteristics(client)
-        command_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0401)  # 0x19
+
         rssi = await client.get_rssi()
         print(f"Connected.")
         print(f"Signal Strength: {rssi} dBm")
@@ -71,13 +71,14 @@ async def main():
         ##########################################################################################
 
 
-        # Unknown Characteristic #################################################################
+        # # Unknown Notify Characteristic ##########################################################
         # unknown_notify_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0104)
         # await client.start_notify(unknown_notify_characteristic, ble_notification_callback) 
-        # unknown_char = await client.read_gatt_char(unknown_notify_characteristic)
-        # print(unknown_char)
-        ##########################################################################################
+        # ##########################################################################################
 
+
+
+        command_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0401)  # 0x19
         # typedef enum {
         #     myohw_command_set_mode               = 0x01, ///< Set EMG and IMU modes. See myohw_command_set_mode_t.
         #     myohw_command_vibrate                = 0x03, ///< Vibrate. See myohw_command_vibrate_t.
@@ -88,10 +89,27 @@ async def main():
         #     myohw_command_user_action            = 0x0b, ///< Notify user that an action has been recognized / confirmed.
         #                                                  ///< See myohw_command_user_action_t.
 
+        # # # User action notification ################################################################
+        # # # typedef struct MYOHW_PACKED {
+        # # #     myohw_command_header_t header; ///< command == myohw_command_user_action. payload_size == 1.
+        # # #     uint8_t type;                  ///< Type of user action that occurred. See myohw_user_action_type_t.
+        # # # } myohw_command_user_action_t;
+        # # # MYOHW_STATIC_ASSERT_SIZED(myohw_command_user_action_t, 3);     
+        # # # 
+        # # # /// User action types.
+        # # # typedef enum {
+        # # #     myohw_user_action_single = 0, ///< User did a single, discrete action, such as pausing a video.
+        # # # } myohw_user_action_type_t;   
+        # command = 0x0b # set sleep mode
+        # action_type = 0 # TODO is this correct? Does a separate notify characteristic need to be enabled?
+        # payload_byte_size = 2
+        # command_header = struct.pack('<3B', command, payload_byte_size, action_type)
+        # await client.write_gatt_char(command_characteristic, command_header, response=True)
+        # # ###########################################################################################
+
 
         # Command to set EMG and IMU modes
         command =  0x01
-
         # myo samples at a constant rate of 200 Hz.
         # myohw_emg_mode_none         = 0x00, # Do not send EMG data.
         #                               0x01  # Undocumented filtered 50Hz.
@@ -182,7 +200,6 @@ async def main():
         await client.write_gatt_char(command_characteristic, command_header, response=True)
         ###########################################################################################
 
-
         # Vibration mode ######################################################################
         # typedef enum {
         #     myohw_vibration_none   = 0x00, ///< Do not vibrate.
@@ -223,14 +240,13 @@ async def main():
         lock_mode = 0x02 # myohw_unlock_hold
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
-        # await client.start_notify(command_characteristic, ble_notification_callback)
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
         ###########################################################################################
 
 
         # Deep sleep command ######################################################################
         # WARNING: This will immediately disconnect and put the Myo into a deep sleep that can only 
-        # be awakened by plugging it into USB.
+        # be awakened by plugging it into USB
         # command = 0x04 # set deep sleep mode
         # payload_byte_size = 1
         # command_header = struct.pack('<2B', command, payload_byte_size)
