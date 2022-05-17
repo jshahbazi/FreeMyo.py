@@ -168,10 +168,10 @@ async def main():
 
         # Get Battery Info ######################################################################
         battery_level_characteristic = '0000{0:x}-0000-1000-8000-00805f9b34fb'.format(0x2a19)
-        # battery_level_char = await client.read_gatt_char(battery_level_characteristic)
-        # battery_level = int.from_bytes(battery_level_char, 'big')
-        # print(battery_level)
-        await client.start_notify(battery_level_characteristic, ble_notification_callback) 
+        battery_level_char = await client.read_gatt_char(battery_level_characteristic)
+        battery_level = int.from_bytes(battery_level_char, 'big')
+        print(f"Battery Level: {battery_level}") # Get initial battery level
+        await client.start_notify(battery_level_characteristic, ble_notification_callback) # subscribe to battery level notifications
         #########################################################################################
 
         # Get Revision Info #####################################################################
@@ -200,7 +200,8 @@ async def main():
         await client.write_gatt_char(command_characteristic, command_header, response=True)
         ###########################################################################################
 
-        # Vibration mode ######################################################################
+        # Vibration command ######################################################################
+        # Use this to send a vibration whenever you want
         # typedef enum {
         #     myohw_vibration_none   = 0x00, ///< Do not vibrate.
         #     myohw_vibration_short  = 0x01, ///< Vibrate for a short amount of time.
@@ -208,32 +209,33 @@ async def main():
         #     myohw_vibration_long   = 0x03, ///< Vibrate for a long amount of time.
         # } myohw_vibration_type_t;
         command = 0x03 # set vibrate mode
-        vibrate_mode = 0x00 # myohw_vibration_none
+        vibration_type = 0x00 # myohw_vibration_none
         payload_byte_size = 1
-        command_header = struct.pack('<3B', command, payload_byte_size, vibrate_mode)
+        command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
         ###########################################################################################
 
-        # Extended Vibration mode ######################################################################
-        # typedef struct MYOHW_PACKED {
-        #     myohw_command_header_t header; ///< command == myohw_command_vibrate2. payload_size == 18.
-        #     struct MYOHW_PACKED {
-        #         uint16_t duration;         ///< duration (in ms) of the vibration
-        #         uint8_t strength;          ///< strength of vibration (0 - motor off, 255 - full speed)
-        #     } steps[MYOHW_COMMAND_VIBRATE2_STEPS];
-        # } myohw_command_vibrate2_t;
-        # MYOHW_STATIC_ASSERT_SIZED(myohw_command_vibrate2_t, 20);
-        command = 0x07 # set vibrate2 mode
-        steps = b''
-        number_of_steps = 6 # set the number of times to vibrate        
-        for _ in range(number_of_steps):
-            duration = 1000 # duration (in ms) of the vibration step
-            strength = 255 # strength of vibration step (0 - motor off, 255 - full speed)            
-            steps += struct.pack('<HB', duration, strength)
-        payload_byte_size = len(steps)
-        command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
-        await client.write_gatt_char(command_characteristic, command_header, response=True)      
-        ###########################################################################################
+        # # Extended Vibration mode ######################################################################
+        # Use this to send more complex vibrations
+        # # typedef struct MYOHW_PACKED {
+        # #     myohw_command_header_t header; ///< command == myohw_command_vibrate2. payload_size == 18.
+        # #     struct MYOHW_PACKED {
+        # #         uint16_t duration;         ///< duration (in ms) of the vibration
+        # #         uint8_t strength;          ///< strength of vibration (0 - motor off, 255 - full speed)
+        # #     } steps[MYOHW_COMMAND_VIBRATE2_STEPS];
+        # # } myohw_command_vibrate2_t;
+        # # MYOHW_STATIC_ASSERT_SIZED(myohw_command_vibrate2_t, 20);
+        # command = 0x07 # set vibrate2 mode
+        # steps = b''
+        # number_of_steps = 6 # set the number of times to vibrate        
+        # for _ in range(number_of_steps):
+        #     duration = 1000 # duration (in ms) of the vibration step
+        #     strength = 255 # strength of vibration step (0 - motor off, 255 - full speed)            
+        #     steps += struct.pack('<HB', duration, strength)
+        # payload_byte_size = len(steps)
+        # command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
+        # await client.write_gatt_char(command_characteristic, command_header, response=True)      
+        # ###########################################################################################
 
         # Unlock command ######################################################################
         command = 0x0a # unlock myo
