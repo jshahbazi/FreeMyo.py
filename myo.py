@@ -77,6 +77,16 @@ async def main():
         # print(unknown_char)
         ##########################################################################################
 
+        # typedef enum {
+        #     myohw_command_set_mode               = 0x01, ///< Set EMG and IMU modes. See myohw_command_set_mode_t.
+        #     myohw_command_vibrate                = 0x03, ///< Vibrate. See myohw_command_vibrate_t.
+        #     myohw_command_deep_sleep             = 0x04, ///< Put Myo into deep sleep. See myohw_command_deep_sleep_t.
+        #     myohw_command_vibrate2               = 0x07, ///< Extended vibrate. See myohw_command_vibrate2_t.
+        #     myohw_command_set_sleep_mode         = 0x09, ///< Set sleep mode. See myohw_command_set_sleep_mode_t.
+        #     myohw_command_unlock                 = 0x0a, ///< Unlock Myo. See myohw_command_unlock_t.
+        #     myohw_command_user_action            = 0x0b, ///< Notify user that an action has been recognized / confirmed.
+        #                                                  ///< See myohw_command_user_action_t.
+
 
         # Command to set EMG and IMU modes
         command =  0x01
@@ -155,16 +165,6 @@ async def main():
         print(f"Myo Firmware Version: {major}.{minor}.{patch}.{hardware_revision}")                        
         #########################################################################################
 
-        # typedef enum {
-        #     myohw_command_set_mode               = 0x01, ///< Set EMG and IMU modes. See myohw_command_set_mode_t.
-        #     myohw_command_vibrate                = 0x03, ///< Vibrate. See myohw_command_vibrate_t.
-        #     myohw_command_deep_sleep             = 0x04, ///< Put Myo into deep sleep. See myohw_command_deep_sleep_t.
-        #     myohw_command_vibrate2               = 0x07, ///< Extended vibrate. See myohw_command_vibrate2_t.
-        #     myohw_command_set_sleep_mode         = 0x09, ///< Set sleep mode. See myohw_command_set_sleep_mode_t.
-        #     myohw_command_unlock                 = 0x0a, ///< Unlock Myo. See myohw_command_unlock_t.
-        #     myohw_command_user_action            = 0x0b, ///< Notify user that an action has been recognized / confirmed.
-        #                                                  ///< See myohw_command_user_action_t.
-
         # Set LED mode ######################################################################
         command = 0x06 # set led mode
         payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
@@ -208,11 +208,9 @@ async def main():
 
 
         # Deep sleep command ######################################################################
-        # typedef struct MYOHW_PACKED {
-        #     myohw_command_header_t header; ///< command == myohw_command_deep_sleep. payload_size == 0.
-        # } myohw_command_deep_sleep_t;
-        # MYOHW_STATIC_ASSERT_SIZED(myohw_command_deep_sleep_t, 2);
-        # command = 0x04 # set deep sleep mode # immediately disconnects and puts to sleep
+        # WARNING: This will immediately disconnect and put the Myo into a deep sleep that can only 
+        # be awakened by plugging it into USB.
+        # command = 0x04 # set deep sleep mode
         # payload_byte_size = 1
         # command_header = struct.pack('<2B', command, payload_byte_size)
         # await client.write_gatt_char(command_characteristic, command_header, response=True)
