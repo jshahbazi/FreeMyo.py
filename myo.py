@@ -1,5 +1,5 @@
 import asyncio, yaml, struct
-from bleak import BleakClient, BleakScanner
+from bleak import BleakClient
 
 # def convert_UUID_to_hex(the_value):
 #     the_value = the_value.replace('-', '')
@@ -56,6 +56,7 @@ async def main():
     print(f"Connecting to {ble_device_uuid}")
 
     async with BleakClient(ble_device_uuid) as client:
+        # await list_ble_characteristics(client)
         command_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0401)  # 0x19
         rssi = await client.get_rssi()
         print(f"Connected.")
@@ -196,6 +197,26 @@ async def main():
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
         ###########################################################################################
 
+        # Extended Vibration mode ######################################################################
+        # typedef struct MYOHW_PACKED {
+        #     myohw_command_header_t header; ///< command == myohw_command_vibrate2. payload_size == 18.
+        #     struct MYOHW_PACKED {
+        #         uint16_t duration;         ///< duration (in ms) of the vibration
+        #         uint8_t strength;          ///< strength of vibration (0 - motor off, 255 - full speed)
+        #     } steps[MYOHW_COMMAND_VIBRATE2_STEPS];
+        # } myohw_command_vibrate2_t;
+        # MYOHW_STATIC_ASSERT_SIZED(myohw_command_vibrate2_t, 20);
+        command = 0x07 # set vibrate2 mode
+        steps = b''
+        number_of_steps = 6 # set the number of times to vibrate        
+        for _ in range(number_of_steps):
+            duration = 1000 # duration (in ms) of the vibration step
+            strength = 255 # strength of vibration step (0 - motor off, 255 - full speed)            
+            steps += struct.pack('<HB', duration, strength)
+        payload_byte_size = len(steps)
+        command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
+        await client.write_gatt_char(command_characteristic, command_header, response=True)      
+        ###########################################################################################
 
         # Unlock command ######################################################################
         command = 0x0a # unlock myo
