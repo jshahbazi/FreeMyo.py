@@ -5,6 +5,6 @@ myo_armband:
     battery_level: 00002a19-0000-1000-8000-00805f9b34fb
     classifier_event: d5060103-a904-deb9-4748-2c7f4a124842
     command: d5060401-a904-deb9-4748-2c7f4a124842    
-    device_info: d50600101-a904-deb9-4748-2c7f4a124842
+    device_info: d5060101-a904-deb9-4748-2c7f4a124842
     manufacturer: 00002a29-0000-1000-8000-00805f9b34fb
-    revision: d50600201-a904-deb9-4748-2c7f4a124842
+    revision: d5060201-a904-deb9-4748-2c7f4a124842
