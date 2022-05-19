@@ -38,38 +38,58 @@ XDIRECTION_VALUES = {
 
 
 
+COMMAND = {
+    'SET_EMG_IMU_MODE':   1, # Set EMG and IMU and Classifier modes
+    'VIBRATE':            3, # Vibrate
+    'DEEP_SLEEP':         4, # Put Myo into deep sleep
+    'LED':                6, # Set LED mode
+    'EXTENDED_VIBRATION': 7, # Extended vibrate
+    'SET_SLEEP_MODE':     9, # Set sleep mode
+    'UNLOCK':            10, # Unlock Myo
+    'USER_ACTION':       11, # Notify user that an action has been recognized / confirmed
+}  
 
 # Myo samples at a constant rate of 200 HZ
 EMG_MODE = {
-    'OFF': 0,           # Do not send EMG data
+    'OFF':           0, # Do not send EMG data
     'FILTERED_50HZ': 1, # Undocumented filtered 50Hz
-    'FILTERED': 2,      # Send filtered EMG data
-    'RAW': 3,           # Send raw (unfiltered) EMG data
+    'FILTERED':      2, # Send filtered EMG data
+    'RAW':           3, # Send raw (unfiltered) EMG data
 }
 
 IMU_MODE = {
-    'OFF': 0,           # Do not send IMU data or events
-    'SEND_DATA': 1,     # Send IMU data streams (accelerometer, gyroscope, and orientation)
-    'SEND_EVENTS': 2,   # Send motion events detected by the IMU (e.g. taps)
-    'SEND_ALL': 3,      # Send both IMU data streams and motion events
-    'SEND_RAW': 4,      # Send raw IMU data streams 
+    'OFF':           0, # Do not send IMU data or events
+    'SEND_DATA':     1, # Send IMU data streams (accelerometer, gyroscope, and orientation)
+    'SEND_EVENTS':   2, # Send motion events detected by the IMU (e.g. taps)
+    'SEND_ALL':      3, # Send both IMU data streams and motion events
+    'SEND_RAW':      4, # Send raw IMU data streams 
+}
+
+VIBRATION_DURATION = {
+    'NONE':         0, # Do not vibrate
+    'SHORT':        1, # Vibrate for a short amount of time
+    'MEDIUM':       2, # Vibrate for a medium amount of time
+    'LONG':         3, # Vibrate for a long amount of time
+}
+
+SLEEP_MODE = {
+    'NORMAL':        0, # Normal sleep mode; Myo will sleep after a period of inactivity
+    'NEVER_SLEEP':   1, # Never go to sleep
+}
+
+UNLOCK_COMMAND = {
+    'UNLOCK_RELOCK': 0, # Unlock then re-lock immediately
+    'UNLOCK_TIMED':  1, # Unlock now and re-lock after a fixed timeout
+    'UNLOCK_HOLD':   2, # Unlock now and remain unlocked until a lock command is received
 }
 
 CLASSIFIER_MODE = {
-    'DISABLED': 0,     # Disable and reset the internal state of the onboard classifier
-    'ENABLED': 1,      # Send classifier events (poses and arm events)
+    'DISABLED':      0, # Disable and reset the internal state of the onboard classifier
+    'ENABLED':       1, # Send classifier events (poses and arm events)
 }
 
-COMMAND = {
-    'SET_EMG_IMU_MODE': 1,    # Set EMG and IMU and Classifier modes
-    'VIBRATE': 3,             # Vibrate
-    'DEEP_SLEEP': 4,          # Put Myo into deep sleep
-    'LED': 6,                 # Set LED mode
-    'EXTENDED_VIBRATION': 7,  # Extended vibrate
-    'SET_SLEEP_MODE': 9,      # Set sleep mode
-    'UNLOCK': 10,             # Unlock Myo
-    'USER_ACTION': 11,        # Notify user that an action has been recognized / confirmed
-}    
+
+
 
 
 def handle_battery_notification(data):
@@ -143,7 +163,6 @@ async def main():
             return
 
     ble_device_uuid = device_config['myo_armband']['device_uuid']
-    # ble_device_uuid = 'EDC1E6C0-B2AB-362E-9A2B-AC0913FF36DF'
     print(f"Connecting to {ble_device_uuid}")
 
     async with BleakClient(ble_device_uuid) as client:
@@ -163,7 +182,7 @@ async def main():
 
 
         # # Unknown Notify Characteristic ##########################################################
-        # unknown_notify_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0104)
+        # unknown_notify_characteristic = "d50600104-a904-deb9-4748-2c7f4a124842"
         # await client.start_notify(unknown_notify_characteristic, ble_notification_callback) 
         # ##########################################################################################
 
@@ -171,10 +190,9 @@ async def main():
 
         command_characteristic = device_config['myo_armband']['characteristics']['command']
 
-
         # Unlock command ######################################################################
-        command = 0x0a # unlock myo
-        lock_mode = 0x02 # myohw_unlock_hold
+        command = COMMAND['UNLOCK']
+        lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
@@ -279,7 +297,7 @@ async def main():
 
         # Sleep mode ######################################################################
         command = COMMAND['SET_SLEEP_MODE'] 
-        sleep_mode = 0x01 # 1 is myohw_sleep_mode_never_sleep, 0 is myohw_sleep_mode_normal
+        sleep_mode = SLEEP_MODE['NORMAL']
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, sleep_mode)
         await client.write_gatt_char(command_characteristic, command_header, response=True)
@@ -288,14 +306,8 @@ async def main():
 
         # Vibration command ######################################################################
         # Use this to send a vibration whenever you want
-        # typedef enum {
-        #     myohw_vibration_none   = 0x00, ///< Do not vibrate.
-        #     myohw_vibration_short  = 0x01, ///< Vibrate for a short amount of time.
-        #     myohw_vibration_medium = 0x02, ///< Vibrate for a medium amount of time.
-        #     myohw_vibration_long   = 0x03, ///< Vibrate for a long amount of time.
-        # } myohw_vibration_type_t;
         command = COMMAND['VIBRATE'] 
-        vibration_type = 0x00 # myohw_vibration_none
+        vibration_type = VIBRATION_DURATION['SHORT']
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
@@ -304,14 +316,6 @@ async def main():
 
         # # Extended Vibration mode ######################################################################
         # Use this to send more complex vibrations
-        # # typedef struct MYOHW_PACKED {
-        # #     myohw_command_header_t header; ///< command == myohw_command_vibrate2. payload_size == 18.
-        # #     struct MYOHW_PACKED {
-        # #         uint16_t duration;         ///< duration (in ms) of the vibration
-        # #         uint8_t strength;          ///< strength of vibration (0 - motor off, 255 - full speed)
-        # #     } steps[MYOHW_COMMAND_VIBRATE2_STEPS];
-        # # } myohw_command_vibrate2_t;
-        # # MYOHW_STATIC_ASSERT_SIZED(myohw_command_vibrate2_t, 20);
         # command = COMMAND['EXTENDED_VIBRATION'] 
         # steps = b''
         # number_of_steps = 6 # set the number of times to vibrate        
