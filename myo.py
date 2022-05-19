@@ -3,7 +3,7 @@ from tkinter import RIGHT
 from enum import Enum
 from bleak import BleakClient
 
-classifier_event_types = {
+CLASSIFIER_EVENT_TYPES = {
     1: 'ARM_SYNCED',
     2: 'ARM_UNSYNCED',
     3: 'POSE',
@@ -12,14 +12,14 @@ classifier_event_types = {
     6: 'SYNC_FAILED',
 }
 
-arm_values = {
+ARM_VALUES = {
     0: 'UNKNOWN',
     1: 'RIGHT',
     2: 'LEFT',
     255: 'UNKNOWN',
 }
 
-pose_values = {
+POSE_VALUES = {
     0: 'REST',
     1: 'FIST',
     2: 'WAVE_IN',
@@ -29,11 +29,47 @@ pose_values = {
     255: 'UNKNOWN'
 }
 
-xdirection_values = {
+XDIRECTION_VALUES = {
     1: 'TOWARD_WRIST',
     2: 'TOWARD_ELBOW',
     255: 'UNKNOWN'
 }
+
+
+
+
+
+# Myo samples at a constant rate of 200 HZ
+EMG_MODE = {
+    'OFF': 0,           # Do not send EMG data
+    'FILTERED_50HZ': 1, # Undocumented filtered 50Hz
+    'FILTERED': 2,      # Send filtered EMG data
+    'RAW': 3,           # Send raw (unfiltered) EMG data
+}
+
+IMU_MODE = {
+    'OFF': 0,           # Do not send IMU data or events
+    'SEND_DATA': 1,     # Send IMU data streams (accelerometer, gyroscope, and orientation)
+    'SEND_EVENTS': 2,   # Send motion events detected by the IMU (e.g. taps)
+    'SEND_ALL': 3,      # Send both IMU data streams and motion events
+    'SEND_RAW': 4,      # Send raw IMU data streams 
+}
+
+CLASSIFIER_MODE = {
+    'DISABLED': 0,     # Disable and reset the internal state of the onboard classifier
+    'ENABLED': 1,      # Send classifier events (poses and arm events)
+}
+
+COMMAND = {
+    'SET_EMG_IMU_MODE': 1,    # Set EMG and IMU and Classifier modes
+    'VIBRATE': 3,             # Vibrate
+    'DEEP_SLEEP': 4,          # Put Myo into deep sleep
+    'LED': 6,                 # Set LED mode
+    'EXTENDED_VIBRATION': 7,  # Extended vibrate
+    'SET_SLEEP_MODE': 9,      # Set sleep mode
+    'UNLOCK': 10,             # Unlock Myo
+    'USER_ACTION': 11,        # Notify user that an action has been recognized / confirmed
+}    
 
 
 def handle_battery_notification(data):
@@ -42,17 +78,17 @@ def handle_battery_notification(data):
 
 def handle_classifier_indication(data):
     event_id, value_id, x_direction_id, _, _, _ = struct.unpack('<6B', data) #TODO what are the 3 bytes at the end?
-    classifier_event = classifier_event_types[event_id]
+    classifier_event = CLASSIFIER_EVENT_TYPES[event_id]
     classifier_value = None
     x_direction = None
     match classifier_event:
         case 'ARM_SYNCED':
-            classifier_value = arm_values[value_id]
-            x_direction = xdirection_values[x_direction_id]
+            classifier_value = ARM_VALUES[value_id]
+            x_direction = XDIRECTION_VALUES[x_direction_id]
         case 'ARM_UNSYNCED':
             pass
         case 'POSE':
-            classifier_value = pose_values[value_id]
+            classifier_value = POSE_VALUES[value_id]
         case 'UNLOCKED':
             pass
         case 'LOCKED':
@@ -106,7 +142,7 @@ async def main():
             print(f"Error reading config file: {e}")
             return
 
-    ble_device_uuid = device_config["device"][0]['device_uuid']
+    ble_device_uuid = device_config['myo_armband']['device_uuid']
     # ble_device_uuid = 'EDC1E6C0-B2AB-362E-9A2B-AC0913FF36DF'
     print(f"Connecting to {ble_device_uuid}")
 
@@ -119,7 +155,7 @@ async def main():
 
 
         # Get Device Manufacturer #################################################################
-        device_manufacturer_characteristic = '0000{0:x}-0000-1000-8000-00805f9b34fb'.format(0x2a29)
+        device_manufacturer_characteristic = device_config['myo_armband']['characteristics']['manufacturer']
         device_manufacturer_char = await client.read_gatt_char(device_manufacturer_characteristic)
         device_manufacturer = device_manufacturer_char.decode('utf-8')
         print(f"Manufacturer: {device_manufacturer}")
@@ -133,34 +169,8 @@ async def main():
 
 
 
-        command_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0401)  # 0x19
-        # typedef enum {
-        #     myohw_command_set_mode               = 0x01, ///< Set EMG and IMU modes. See myohw_command_set_mode_t.
-        #     myohw_command_vibrate                = 0x03, ///< Vibrate. See myohw_command_vibrate_t.
-        #     myohw_command_deep_sleep             = 0x04, ///< Put Myo into deep sleep. See myohw_command_deep_sleep_t.
-        #     myohw_command_vibrate2               = 0x07, ///< Extended vibrate. See myohw_command_vibrate2_t.
-        #     myohw_command_set_sleep_mode         = 0x09, ///< Set sleep mode. See myohw_command_set_sleep_mode_t.
-        #     myohw_command_unlock                 = 0x0a, ///< Unlock Myo. See myohw_command_unlock_t.
-        #     myohw_command_user_action            = 0x0b, ///< Notify user that an action has been recognized / confirmed.
-        #                                                  ///< See myohw_command_user_action_t.
+        command_characteristic = device_config['myo_armband']['characteristics']['command']
 
-        # # # User action notification ################################################################
-        # # # typedef struct MYOHW_PACKED {
-        # # #     myohw_command_header_t header; ///< command == myohw_command_user_action. payload_size == 1.
-        # # #     uint8_t type;                  ///< Type of user action that occurred. See myohw_user_action_type_t.
-        # # # } myohw_command_user_action_t;
-        # # # MYOHW_STATIC_ASSERT_SIZED(myohw_command_user_action_t, 3);     
-        # # # 
-        # # # /// User action types.
-        # # # typedef enum {
-        # # #     myohw_user_action_single = 0, ///< User did a single, discrete action, such as pausing a video.
-        # # # } myohw_user_action_type_t;   
-        # command = 0x0b # set sleep mode
-        # action_type = 0 # TODO is this correct? Does a separate notify characteristic need to be enabled?
-        # payload_byte_size = 2
-        # command_header = struct.pack('<3B', command, payload_byte_size, action_type)
-        # await client.write_gatt_char(command_characteristic, command_header, response=True)
-        # # ###########################################################################################
 
         # Unlock command ######################################################################
         command = 0x0a # unlock myo
@@ -169,33 +179,40 @@ async def main():
         command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
         ###########################################################################################
-
+    
 
         # Command to set EMG and IMU modes
-        command =  0x01
-        # myo samples at a constant rate of 200 Hz.
-        # myohw_emg_mode_none         = 0x00, # Do not send EMG data.
-        #                               0x01  # Undocumented filtered 50Hz.
-        # myohw_emg_mode_send_emg     = 0x02, # Send filtered EMG data.
-        # myohw_emg_mode_send_emg_raw = 0x03, # Send raw (unfiltered) EMG data.        
-        emg_mode = 0x00
-        # myohw_imu_mode_none        = 0x00, # Do not send IMU data or events.
-        # myohw_imu_mode_send_data   = 0x01, # Send IMU data streams (accelerometer, gyroscope, and orientation).
-        # myohw_imu_mode_send_events = 0x02, # Send motion events detected by the IMU (e.g. taps).
-        # myohw_imu_mode_send_all    = 0x03, # Send both IMU data streams and motion events.
-        # myohw_imu_mode_send_raw    = 0x04, # Send raw IMU data streams.        
-        imu_mode = 0x00
-        # myohw_classifier_mode_disabled = 0x00, # Disable and reset the internal state of the onboard classifier.
-        # myohw_classifier_mode_enabled  = 0x01, # Send classifier events (poses and arm events).
-        classifier_mode = 0x01
+        command =  COMMAND['SET_EMG_IMU_MODE']     
+        emg_mode = EMG_MODE['OFF']     
+        imu_mode = IMU_MODE['OFF']
+        classifier_mode = CLASSIFIER_MODE['ENABLED']
         payload_byte_size = 3
         command_header = struct.pack('<5B', command, payload_byte_size, emg_mode, imu_mode, classifier_mode) #  b'\x01\x02\x00\x00'
         await client.write_gatt_char(command_characteristic, command_header, response=True)  
-        await client.start_notify('d5060103-a904-deb9-4748-2c7f4a124842', ble_notification_callback) # subscribe to battery level notifications
+        ###########################################################################################
+
+
+        # Subscribe to Classifier Notifications ###################################################
+        # This is actually an indicate property, but Bleak abstracts out the required response and treats it like a notification
+        classifier_event_characteristic = device_config['myo_armband']['characteristics']['classifier_event']
+        await client.start_notify(classifier_event_characteristic, ble_notification_callback)
+        ###########################################################################################
+
+
+        # # # User action notification ################################################################
+        # # # typedef enum {
+        # # #     myohw_user_action_single = 0, ///< User did a single, discrete action, such as pausing a video.
+        # # # } myohw_user_action_type_t;   
+        # command = 0x0b
+        # action_type = 0 # TODO is this correct? Does a separate notify characteristic need to be enabled?
+        # payload_byte_size = 2
+        # command_header = struct.pack('<3B', command, payload_byte_size, action_type)
+        # await client.write_gatt_char(command_characteristic, command_header, response=True)
+        # # ###########################################################################################
 
 
         # Get Device Info #################################################################
-        device_info_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0101)
+        device_info_characteristic = device_config['myo_armband']['characteristics']['device_info']
         device_info_char = await client.read_gatt_char(device_info_characteristic)
         info = struct.unpack("<6BHBBBBB7B", device_info_char) #20
         serial_number = '-'.join(map(str,info[0:6]))
@@ -231,15 +248,16 @@ async def main():
      
 
         # Get Battery Info ######################################################################
-        battery_level_characteristic = '0000{0:x}-0000-1000-8000-00805f9b34fb'.format(0x2a19)
+        battery_level_characteristic = device_config['myo_armband']['characteristics']['battery_level']
         battery_level_char = await client.read_gatt_char(battery_level_characteristic)
         battery_level = int.from_bytes(battery_level_char, 'big')
         print(f"Battery Level: {battery_level}") # Get initial battery level
         await client.start_notify(battery_level_characteristic, ble_notification_callback) # subscribe to battery level notifications
         #########################################################################################
 
+
         # Get Revision Info #####################################################################
-        revision_characteristic = "d5060{0:x}-a904-deb9-4748-2c7f4a124842".format(0x0201)
+        revision_characteristic = device_config['myo_armband']['characteristics']['revision']
         firmware_revision_value = await client.read_gatt_char(revision_characteristic)
         major = int.from_bytes(firmware_revision_value[0:2], 'little') # Major
         minor = int.from_bytes(firmware_revision_value[2:4], 'little') # Minor
@@ -248,8 +266,9 @@ async def main():
         print(f"Myo Firmware Version: {major}.{minor}.{patch}.{hardware_revision}")                        
         #########################################################################################
 
+
         # Set LED mode ######################################################################
-        command = 0x06 # set led mode
+        command = COMMAND['LED'] 
         # 128 128 255 is a very nice purple
         payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
         payload_byte_size = len(payload)
@@ -257,13 +276,15 @@ async def main():
         await client.write_gatt_char(command_characteristic, command_header, response=True)
         ###########################################################################################
 
+
         # Sleep mode ######################################################################
-        command = 0x09 # set sleep mode
+        command = COMMAND['SET_SLEEP_MODE'] 
         sleep_mode = 0x01 # 1 is myohw_sleep_mode_never_sleep, 0 is myohw_sleep_mode_normal
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, sleep_mode)
         await client.write_gatt_char(command_characteristic, command_header, response=True)
         ###########################################################################################
+
 
         # Vibration command ######################################################################
         # Use this to send a vibration whenever you want
@@ -273,12 +294,13 @@ async def main():
         #     myohw_vibration_medium = 0x02, ///< Vibrate for a medium amount of time.
         #     myohw_vibration_long   = 0x03, ///< Vibrate for a long amount of time.
         # } myohw_vibration_type_t;
-        command = 0x03 # set vibrate mode
+        command = COMMAND['VIBRATE'] 
         vibration_type = 0x00 # myohw_vibration_none
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
         await client.write_gatt_char(command_characteristic, command_header, response=True)      
         ###########################################################################################
+
 
         # # Extended Vibration mode ######################################################################
         # Use this to send more complex vibrations
@@ -290,7 +312,7 @@ async def main():
         # #     } steps[MYOHW_COMMAND_VIBRATE2_STEPS];
         # # } myohw_command_vibrate2_t;
         # # MYOHW_STATIC_ASSERT_SIZED(myohw_command_vibrate2_t, 20);
-        # command = 0x07 # set vibrate2 mode
+        # command = COMMAND['EXTENDED_VIBRATION'] 
         # steps = b''
         # number_of_steps = 6 # set the number of times to vibrate        
         # for _ in range(number_of_steps):
@@ -307,7 +329,7 @@ async def main():
         # Deep sleep command ######################################################################
         # WARNING: This will immediately disconnect and put the Myo into a deep sleep that can only 
         # be awakened by plugging it into USB
-        # command = 0x04 # set deep sleep mode
+        # command = COMMAND['DEEP_SLEEP'] 
         # payload_byte_size = 1
         # command_header = struct.pack('<2B', command, payload_byte_size)
         # await client.write_gatt_char(command_characteristic, command_header, response=True)
