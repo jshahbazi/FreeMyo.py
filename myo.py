@@ -1,35 +1,39 @@
-import asyncio, yaml, struct
+import asyncio, binascii,yaml, struct
+from tkinter import RIGHT
 from enum import Enum
 from bleak import BleakClient
 
-class ClassifierEventType(Enum):
-    ARM_SYNCED = 0x01
-    ARM_UNSYNCED = 0x02
-    POSE = 0x03
-    UNLOCKED = 0x04
-    LOCKED = 0x05
-    SYNC_FAILED = 0x06
+classifier_event_types = {
+    1: 'ARM_SYNCED',
+    2: 'ARM_UNSYNCED',
+    3: 'POSE',
+    4: 'UNLOCKED',
+    5: 'LOCKED',
+    6: 'SYNC_FAILED',
+}
 
-class Arm(Enum):
-    RIGHT = 0x01
-    LEFT = 0x02
-    UNKNOWN = 0xff
+arm_values = {
+    0: 'UNKNOWN',
+    1: 'RIGHT',
+    2: 'LEFT',
+    255: 'UNKNOWN',
+}
 
-class Pose(Enum):
-    REST = 0x00
-    FIST = 0x01
-    WAVE_IN = 0x02
-    WAVE_OUT = 0x03
-    FINGERS_SPREAD = 0x04
-    DOUBLE_TAP = 0x05
-    UNKNOWN = 0xff  
+pose_values = {
+    0: 'REST',
+    1: 'FIST',
+    2: 'WAVE_IN',
+    3: 'WAVE_OUT',
+    4: 'FINGERS_SPREAD',
+    5: 'DOUBLE_TAP',
+    255: 'UNKNOWN'
+}
 
-class XDirection(Enum):
-    TOWARD_WRIST = 0x01
-    TOWARD_ELBOW = 0x02
-    UNKNOWN = 0xff      
-
-
+xdirection_values = {
+    1: 'TOWARD_WRIST',
+    2: 'TOWARD_ELBOW',
+    255: 'UNKNOWN'
+}
 
 
 def handle_battery_notification(data):
@@ -37,33 +41,29 @@ def handle_battery_notification(data):
     print(f"{characteristic}: {int.from_bytes(data, 'little')}")
 
 def handle_classifier_indication(data):
-    characteristic = 'Classifier Event'
-    print(f"len(data): {len(data)}")
     event_id, value_id, x_direction_id, _, _, _ = struct.unpack('<6B', data) #TODO what are the 3 bytes at the end?
-    event = ClassifierEventType(event_id)
+    classifier_event = classifier_event_types[event_id]
     classifier_value = None
     x_direction = None
-    match event:
-        case ClassifierEventType.ARM_SYNCED:
-            classifier_value = Arm(value_id)      
-            x_direction = XDirection(x_direction_id)            
-        case ClassifierEventType.ARM_UNSYNCED:
-            classifier_value = Arm(value_id)    
-            x_direction = XDirection(x_direction_id)         
-        case ClassifierEventType.POSE:
-            classifier_value = Pose(value_id)                                                                                       
-        case ClassifierEventType.UNLOCKED:
+    match classifier_event:
+        case 'ARM_SYNCED':
+            classifier_value = arm_values[value_id]
+            x_direction = xdirection_values[x_direction_id]
+        case 'ARM_UNSYNCED':
             pass
-        case ClassifierEventType.LOCKED:
+        case 'POSE':
+            classifier_value = pose_values[value_id]
+        case 'UNLOCKED':
             pass
-        case ClassifierEventType.SYNC_FAILED:
+        case 'LOCKED':
+            pass
+        case 'SYNC_FAILED':
             pass
         case _:
-            event = "Unknown Event"
-    print_value = f"Classifier Event: {event} "
-    print_value += f"classifier_value: {classifier_value} " if classifier_value else ""
+            classifier_event = "Unknown Event"
+    print_value = f"{classifier_event} >>> "
+    print_value += f"{classifier_value} " if classifier_value else ""
     print_value += f"x_direction: {x_direction}" if x_direction else ""
-    print_value += f" data: {data}"
     print(print_value) 
 
 def ble_notification_callback(handle, data):
@@ -73,8 +73,7 @@ def ble_notification_callback(handle, data):
         case 34:
             handle_classifier_indication(data)
         case _:
-            characteristic = 'Unknown Characteristic'
-            print(f"{characteristic}: Handle: {handle} Data: {data}")
+            print(f"Unknown Characteristic: Handle: {handle} Data: {data}")
 
 
 async def list_ble_characteristics(client):
@@ -162,6 +161,14 @@ async def main():
         # command_header = struct.pack('<3B', command, payload_byte_size, action_type)
         # await client.write_gatt_char(command_characteristic, command_header, response=True)
         # # ###########################################################################################
+
+        # Unlock command ######################################################################
+        command = 0x0a # unlock myo
+        lock_mode = 0x02 # myohw_unlock_hold
+        payload_byte_size = 1
+        command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
+        await client.write_gatt_char(command_characteristic, command_header, response=True)      
+        ###########################################################################################
 
 
         # Command to set EMG and IMU modes
@@ -295,13 +302,6 @@ async def main():
         # await client.write_gatt_char(command_characteristic, command_header, response=True)      
         # ###########################################################################################
 
-        # Unlock command ######################################################################
-        command = 0x0a # unlock myo
-        lock_mode = 0x02 # myohw_unlock_hold
-        payload_byte_size = 1
-        command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
-        await client.write_gatt_char(command_characteristic, command_header, response=True)      
-        ###########################################################################################
 
 
         # Deep sleep command ######################################################################
@@ -313,6 +313,17 @@ async def main():
         # await client.write_gatt_char(command_characteristic, command_header, response=True)
         ###########################################################################################
 
+
+        # print(await client.read_gatt_descriptor(18)) #0x00
+        # print(await client.read_gatt_descriptor(29))
+        # print(await client.read_gatt_descriptor(32))
+        # print(await client.read_gatt_descriptor(36)) #0x00, 0x00
+        # print(await client.read_gatt_descriptor(40))
+        # print(await client.read_gatt_descriptor(44))
+        # print(await client.read_gatt_descriptor(47))
+        # print(await client.read_gatt_descriptor(50))
+        # print(await client.read_gatt_descriptor(53))
+        # print(await client.read_gatt_descriptor(57))
 
         await asyncio.sleep(120)  
 
