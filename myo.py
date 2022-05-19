@@ -1,24 +1,80 @@
 import asyncio, yaml, struct
+from enum import Enum
 from bleak import BleakClient
 
-# def convert_UUID_to_hex(the_value):
-#     the_value = the_value.replace('-', '')
-#     the_value = the_value[::-1] #reverse the string
-#     hexArrayStr = ''
-#     splitToTwos = map(''.join, zip(*[iter(the_value)]*2))
-#     count = 0
-#     for v in splitToTwos:
-#         count+=1
-#         hexArrayStr = hexArrayStr + ('\x'+(v[::-1]).lower())
-#     return hexArrayStr
+class ClassifierEventType(Enum):
+    ARM_SYNCED = 0x01
+    ARM_UNSYNCED = 0x02
+    POSE = 0x03
+    UNLOCKED = 0x04
+    LOCKED = 0x05
+    SYNC_FAILED = 0x06
+
+class Arm(Enum):
+    RIGHT = 0x01
+    LEFT = 0x02
+    UNKNOWN = 0xff
+
+class Pose(Enum):
+    REST = 0x00
+    FIST = 0x01
+    WAVE_IN = 0x02
+    WAVE_OUT = 0x03
+    FINGERS_SPREAD = 0x04
+    DOUBLE_TAP = 0x05
+    UNKNOWN = 0xff  
+
+class XDirection(Enum):
+    TOWARD_WRIST = 0x01
+    TOWARD_ELBOW = 0x02
+    UNKNOWN = 0xff      
+
+
+
+
+def handle_battery_notification(data):
+    characteristic = 'Battery Level'
+    print(f"{characteristic}: {int.from_bytes(data, 'little')}")
+
+def handle_classifier_indication(data):
+    characteristic = 'Classifier Event'
+    print(f"len(data): {len(data)}")
+    event_id, value_id, x_direction_id, _, _, _ = struct.unpack('<6B', data) #TODO what are the 3 bytes at the end?
+    event = ClassifierEventType(event_id)
+    classifier_value = None
+    x_direction = None
+    match event:
+        case ClassifierEventType.ARM_SYNCED:
+            classifier_value = Arm(value_id)      
+            x_direction = XDirection(x_direction_id)            
+        case ClassifierEventType.ARM_UNSYNCED:
+            classifier_value = Arm(value_id)    
+            x_direction = XDirection(x_direction_id)         
+        case ClassifierEventType.POSE:
+            classifier_value = Pose(value_id)                                                                                       
+        case ClassifierEventType.UNLOCKED:
+            pass
+        case ClassifierEventType.LOCKED:
+            pass
+        case ClassifierEventType.SYNC_FAILED:
+            pass
+        case _:
+            event = "Unknown Event"
+    print_value = f"Classifier Event: {event} "
+    print_value += f"classifier_value: {classifier_value} " if classifier_value else ""
+    print_value += f"x_direction: {x_direction}" if x_direction else ""
+    print_value += f" data: {data}"
+    print(print_value) 
 
 def ble_notification_callback(handle, data):
     match handle:
         case 16:
-            characteristic = 'Battery Level'
+            handle_battery_notification(data)
+        case 34:
+            handle_classifier_indication(data)
         case _:
-            characteristic = 'Unknown Characteristicc'
-    print(f"{characteristic}: {int.from_bytes(data, 'little')}")
+            characteristic = 'Unknown Characteristic'
+            print(f"{characteristic}: Handle: {handle} Data: {data}")
 
 
 async def list_ble_characteristics(client):
@@ -124,10 +180,11 @@ async def main():
         imu_mode = 0x00
         # myohw_classifier_mode_disabled = 0x00, # Disable and reset the internal state of the onboard classifier.
         # myohw_classifier_mode_enabled  = 0x01, # Send classifier events (poses and arm events).
-        classifier_mode = 0x00
+        classifier_mode = 0x01
         payload_byte_size = 3
         command_header = struct.pack('<5B', command, payload_byte_size, emg_mode, imu_mode, classifier_mode) #  b'\x01\x02\x00\x00'
         await client.write_gatt_char(command_characteristic, command_header, response=True)  
+        await client.start_notify('d5060103-a904-deb9-4748-2c7f4a124842', ble_notification_callback) # subscribe to battery level notifications
 
 
         # Get Device Info #################################################################
@@ -186,6 +243,7 @@ async def main():
 
         # Set LED mode ######################################################################
         command = 0x06 # set led mode
+        # 128 128 255 is a very nice purple
         payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
         payload_byte_size = len(payload)
         command_header = struct.pack('<8B', command, payload_byte_size, *payload) 
