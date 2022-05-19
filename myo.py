@@ -1,6 +1,4 @@
-import asyncio, binascii,yaml, struct
-from tkinter import RIGHT
-from enum import Enum
+import asyncio,yaml, struct
 from bleak import BleakClient
 
 CLASSIFIER_EVENT_TYPES = {
@@ -119,7 +117,7 @@ def handle_classifier_indication(data):
             classifier_event = "Unknown Event"
     print_value = f"{classifier_event} >>> "
     print_value += f"{classifier_value} " if classifier_value else ""
-    print_value += f"x_direction: {x_direction}" if x_direction else ""
+    print_value += f"-- {x_direction}" if x_direction else ""
     print(print_value) 
 
 def ble_notification_callback(handle, data):
@@ -190,14 +188,7 @@ async def main():
 
         command_characteristic = device_config['myo_armband']['characteristics']['command']
 
-        # Unlock command ######################################################################
-        command = COMMAND['UNLOCK']
-        lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
-        payload_byte_size = 1
-        command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
-        await client.write_gatt_char(command_characteristic, command_header, response=True)      
-        ###########################################################################################
-    
+
 
         # Command to set EMG and IMU modes
         command =  COMMAND['SET_EMG_IMU_MODE']     
@@ -233,7 +224,7 @@ async def main():
         device_info_characteristic = device_config['myo_armband']['characteristics']['device_info']
         device_info_char = await client.read_gatt_char(device_info_characteristic)
         info = struct.unpack("<6BHBBBBB7B", device_info_char) #20
-        serial_number = '-'.join(map(str,info[0:6]))
+        serial_number = '-'.join(map(str, info[0:6]))
         unlock_pose = int.from_bytes(device_info_char[6:8], 'little')
         active_classifier_type_num = device_info_char[8]
         match active_classifier_type_num:
@@ -285,33 +276,33 @@ async def main():
         #########################################################################################
 
 
-        # Set LED mode ######################################################################
-        command = COMMAND['LED'] 
-        # 128 128 255 is a very nice purple
-        payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
-        payload_byte_size = len(payload)
-        command_header = struct.pack('<8B', command, payload_byte_size, *payload) 
-        await client.write_gatt_char(command_characteristic, command_header, response=True)
-        ###########################################################################################
+        # # Set LED mode ######################################################################
+        # command = COMMAND['LED'] 
+        # # 128 128 255 is a very nice purple
+        # payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
+        # payload_byte_size = len(payload)
+        # command_header = struct.pack('<8B', command, payload_byte_size, *payload) 
+        # await client.write_gatt_char(command_characteristic, command_header, response=True)
+        # ###########################################################################################
 
 
         # Sleep mode ######################################################################
         command = COMMAND['SET_SLEEP_MODE'] 
-        sleep_mode = SLEEP_MODE['NORMAL']
+        sleep_mode = SLEEP_MODE['NEVER_SLEEP']
         payload_byte_size = 1
         command_header = struct.pack('<3B', command, payload_byte_size, sleep_mode)
         await client.write_gatt_char(command_characteristic, command_header, response=True)
         ###########################################################################################
 
 
-        # Vibration command ######################################################################
-        # Use this to send a vibration whenever you want
-        command = COMMAND['VIBRATE'] 
-        vibration_type = VIBRATION_DURATION['SHORT']
-        payload_byte_size = 1
-        command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
-        await client.write_gatt_char(command_characteristic, command_header, response=True)      
-        ###########################################################################################
+        # # Vibration command ######################################################################
+        # # Use this to send a vibration whenever you want
+        # command = COMMAND['VIBRATE'] 
+        # vibration_type = VIBRATION_DURATION['SHORT']
+        # payload_byte_size = 1
+        # command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
+        # await client.write_gatt_char(command_characteristic, command_header, response=True)      
+        # ###########################################################################################
 
 
         # # Extended Vibration mode ######################################################################
@@ -350,6 +341,16 @@ async def main():
         # print(await client.read_gatt_descriptor(50))
         # print(await client.read_gatt_descriptor(53))
         # print(await client.read_gatt_descriptor(57))
+
+        # Unlock command ######################################################################
+        command = COMMAND['UNLOCK']
+        lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
+        payload_byte_size = 1
+        command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
+        await client.write_gatt_char(command_characteristic, command_header, response=True)      
+        ###########################################################################################
+    
+
 
         await asyncio.sleep(120)  
 
