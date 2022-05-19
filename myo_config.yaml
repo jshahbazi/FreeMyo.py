@@ -1,3 +1,10 @@
-device:
-  - name: myo
-    device_uuid: EDC1E6C0-B2AB-362E-9A2B-AC0913FF36DF  
+myo_armband:
+  name: myo
+  device_uuid: EDC1E6C0-B2AB-362E-9A2B-AC0913FF36DF
+  characteristics:
+    battery_level: 00002a19-0000-1000-8000-00805f9b34fb
+    classifier_event: d5060103-a904-deb9-4748-2c7f4a124842
+    command: d5060401-a904-deb9-4748-2c7f4a124842    
+    device_info: d50600101-a904-deb9-4748-2c7f4a124842
+    manufacturer: 00002a29-0000-1000-8000-00805f9b34fb
+    revision: d50600201-a904-deb9-4748-2c7f4a124842
