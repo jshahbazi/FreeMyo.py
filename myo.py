@@ -126,6 +126,14 @@ def ble_notification_callback(handle, data):
             handle_battery_notification(data)
         case 34:
             handle_classifier_indication(data)
+        case 42:
+            print(f"EMG 0: {data}")
+        case 45:
+            print(f"EMG 1: {data}")
+        case 48:
+            print(f"EMG 2: {data}")
+        case 51:
+            print(f"EMG 3: {data}")            
         case _:
             print(f"Unknown Characteristic: Handle: {handle} Data: {data}")
 
@@ -155,7 +163,6 @@ async def main():
     with open("myo_config.yaml", "r") as stream:
         try:
             device_config = yaml.safe_load(stream)
-            # print(device_config)
         except Exception as e:
             print(f"Error reading config file: {e}")
             return
@@ -189,10 +196,27 @@ async def main():
         command_characteristic = device_config['myo_armband']['characteristics']['command']
 
 
+        # Unlock command ######################################################################
+        command = COMMAND['UNLOCK']
+        lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
+        payload_byte_size = 1
+        command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
+        await client.write_gatt_char(command_characteristic, command_header, response=True)      
+        #######################################################################################
+
+        # Sleep mode ##########################################################################
+        command = COMMAND['SET_SLEEP_MODE'] 
+        sleep_mode = SLEEP_MODE['NEVER_SLEEP']
+        payload_byte_size = 1
+        command_header = struct.pack('<3B', command, payload_byte_size, sleep_mode)
+        await client.write_gatt_char(command_characteristic, command_header, response=True)
+        #######################################################################################
+
+
 
         # Command to set EMG and IMU modes
         command =  COMMAND['SET_EMG_IMU_MODE']     
-        emg_mode = EMG_MODE['OFF']     
+        emg_mode = EMG_MODE['FILTERED']     
         imu_mode = IMU_MODE['OFF']
         classifier_mode = CLASSIFIER_MODE['ENABLED']
         payload_byte_size = 3
@@ -200,6 +224,15 @@ async def main():
         await client.write_gatt_char(command_characteristic, command_header, response=True)  
         ###########################################################################################
 
+
+        emg_data0_characteristic = device_config['myo_armband']['characteristics']['emg0']
+        await client.start_notify(emg_data0_characteristic, ble_notification_callback)
+        # emg_data1_characteristic = device_config['myo_armband']['characteristics']['emg1']
+        # await client.start_notify(emg_data1_characteristic, ble_notification_callback)
+        # emg_data2_characteristic = device_config['myo_armband']['characteristics']['emg2']
+        # await client.start_notify(emg_data2_characteristic, ble_notification_callback)
+        # emg_data3_characteristic = device_config['myo_armband']['characteristics']['emg3']
+        # await client.start_notify(emg_data3_characteristic, ble_notification_callback)
 
         # Subscribe to Classifier Notifications ###################################################
         # This is actually an indicate property, but Bleak abstracts out the required response and treats it like a notification
@@ -286,15 +319,6 @@ async def main():
         # ###########################################################################################
 
 
-        # Sleep mode ######################################################################
-        command = COMMAND['SET_SLEEP_MODE'] 
-        sleep_mode = SLEEP_MODE['NEVER_SLEEP']
-        payload_byte_size = 1
-        command_header = struct.pack('<3B', command, payload_byte_size, sleep_mode)
-        await client.write_gatt_char(command_characteristic, command_header, response=True)
-        ###########################################################################################
-
-
         # # Vibration command ######################################################################
         # # Use this to send a vibration whenever you want
         # command = COMMAND['VIBRATE'] 
@@ -342,14 +366,6 @@ async def main():
         # print(await client.read_gatt_descriptor(53))
         # print(await client.read_gatt_descriptor(57))
 
-        # Unlock command ######################################################################
-        command = COMMAND['UNLOCK']
-        lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
-        payload_byte_size = 1
-        command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
-        await client.write_gatt_char(command_characteristic, command_header, response=True)      
-        ###########################################################################################
-    
 
 
         await asyncio.sleep(120)  
