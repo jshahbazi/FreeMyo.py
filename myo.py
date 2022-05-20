@@ -8,6 +8,7 @@ CLASSIFIER_EVENT_TYPES = {
     4: 'UNLOCKED',
     5: 'LOCKED',
     6: 'SYNC_FAILED',
+    7: 'UNKNOWN', # I've only seen this once
 }
 
 ARM_VALUES = {
@@ -89,7 +90,6 @@ CLASSIFIER_MODE = {
 
 
 
-
 def handle_battery_notification(data):
     characteristic = 'Battery Level'
     print(f"{characteristic}: {int.from_bytes(data, 'little')}")
@@ -122,18 +122,53 @@ def handle_classifier_indication(data):
 
 def ble_notification_callback(handle, data):
     match handle:
-        case 16:
-            handle_battery_notification(data)
-        case 34:
+        case 16: # battery notifications
+            handle_battery_notification(data)     
+        case 28: # IMU data
+            values = struct.unpack('10h', data)
+            quat = values[:4]
+            acc  = values[4:7]
+            gyro = values[7:10]
+            print(f"IMU: quat: {quat} acc: {acc} gyro: {gyro}")          
+        case 34: # classifier notifications
             handle_classifier_indication(data)
-        case 42:
-            print(f"EMG 0: {data}")
-        case 45:
-            print(f"EMG 1: {data}")
-        case 48:
-            print(f"EMG 2: {data}")
-        case 51:
-            print(f"EMG 3: {data}")            
+        case 38: # undocumented filtered 50hz emg mode
+            values = list(struct.unpack('<8h', data[:16]))
+            emg = values[:8]
+            intensity_candidate = int(data[15]) # This extra byte seems to be a sort of measure of intensity.
+                                                # Or a measure of how much the sensor is stretched apart.
+                                                # Maybe its the latter trying to be the former?
+                                                # The values vary from 0 to 7 and seem to rise with intensity of pose.
+                                                # This is really only noticeable when making a fist (perhaps because all the muscles tense)
+            print(f"EMG: {emg} - Intensity: {intensity_candidate}")
+        case 42: # EMG 0
+            emg0 = struct.unpack('<16b', data)
+            print(f"EMG 0: {emg0}")
+            # emg1 = struct.unpack('<8b', data[:8])
+            # emg2 = struct.unpack('<8b', data[8:])
+            # print(emg1)
+            # print(emg2)
+        case 45: # EMG 1
+            emg1 = struct.unpack('<16b', data) 
+            print(f"EMG 1: {emg1}")        
+            # emg3 = struct.unpack('<8b', data[:8])
+            # emg4 = struct.unpack('<8b', data[8:])
+            # print(emg3)
+            # print(emg4)
+        case 48: # EMG 2
+            emg2 = struct.unpack('<16b', data)    
+            print(f"EMG 2: {emg2}")   
+            # emg5 = struct.unpack('<8b', data[:8])
+            # emg6 = struct.unpack('<8b', data[8:])
+            # print(emg5)
+            # print(emg6)
+        case 51: # EMG 3
+            emg3 = struct.unpack('<16b', data)  
+            print(f"EMG 3: {emg3}")   
+            # emg7 = struct.unpack('<8b', data[:8])
+            # emg8 = struct.unpack('<8b', data[8:])
+            # print(emg7)
+            # print(emg8)
         case _:
             print(f"Unknown Characteristic: Handle: {handle} Data: {data}")
 
@@ -224,15 +259,18 @@ async def main():
         await client.write_gatt_char(command_characteristic, command_header, response=True)  
         ###########################################################################################
 
-
-        emg_data0_characteristic = device_config['myo_armband']['characteristics']['emg0']
-        await client.start_notify(emg_data0_characteristic, ble_notification_callback)
-        # emg_data1_characteristic = device_config['myo_armband']['characteristics']['emg1']
-        # await client.start_notify(emg_data1_characteristic, ble_notification_callback)
-        # emg_data2_characteristic = device_config['myo_armband']['characteristics']['emg2']
-        # await client.start_notify(emg_data2_characteristic, ble_notification_callback)
-        # emg_data3_characteristic = device_config['myo_armband']['characteristics']['emg3']
-        # await client.start_notify(emg_data3_characteristic, ble_notification_callback)
+        if emg_mode == EMG_MODE['FILTERED_50HZ']:
+            filtered_50hz_characteristic = device_config['myo_armband']['characteristics']['filtered_50hz_emg']
+            await client.start_notify(filtered_50hz_characteristic, ble_notification_callback)
+        else:
+            emg_data0_characteristic = device_config['myo_armband']['characteristics']['emg0']
+            await client.start_notify(emg_data0_characteristic, ble_notification_callback)
+            emg_data1_characteristic = device_config['myo_armband']['characteristics']['emg1']
+            await client.start_notify(emg_data1_characteristic, ble_notification_callback)
+            emg_data2_characteristic = device_config['myo_armband']['characteristics']['emg2']
+            await client.start_notify(emg_data2_characteristic, ble_notification_callback)
+            emg_data3_characteristic = device_config['myo_armband']['characteristics']['emg3']
+            await client.start_notify(emg_data3_characteristic, ble_notification_callback)
 
         # Subscribe to Classifier Notifications ###################################################
         # This is actually an indicate property, but Bleak abstracts out the required response and treats it like a notification
