@@ -221,13 +221,6 @@ async def main():
         ##########################################################################################
 
 
-        # # Unknown Notify Characteristic ##########################################################
-        # unknown_notify_characteristic = "d50600104-a904-deb9-4748-2c7f4a124842"
-        # await client.start_notify(unknown_notify_characteristic, ble_notification_callback) 
-        # ##########################################################################################
-
-
-
         command_characteristic = device_config['myo_armband']['characteristics']['command']
 
 
