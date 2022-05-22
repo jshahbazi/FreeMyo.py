@@ -559,14 +559,13 @@ class EMGGUI():
                 command_header = struct.pack('<8B', command, payload_byte_size, *payload)
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)
                             
-                # send a short vibration to signify connection
-                command = COMMAND['VIBRATE'] 
-                vibration_type = VIBRATION_DURATION['SHORT']
-                payload_byte_size = 1
-                command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
-                await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
+                # # send a short vibration to signify connection
+                # command = COMMAND['VIBRATE'] 
+                # vibration_type = VIBRATION_DURATION['SHORT']
+                # payload_byte_size = 1
+                # command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
+                # await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
                 
-
                 # Extended Vibration mode ######################################################################
                 command = COMMAND['EXTENDED_VIBRATION'] 
                 steps = b''
@@ -580,9 +579,6 @@ class EMGGUI():
                 command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
 
-
-                # classifier mode is enabled by default, so start the notifications
-                await self.client.start_notify(self.classifier_event_characteristic, self.ble_notification_callback)
 
                 try:
                     while not self.shutdown_event.is_set():
