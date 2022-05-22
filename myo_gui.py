@@ -122,6 +122,8 @@ class EMGGUI():
         self.revision_characteristic = device_config['myo_armband']['characteristics']['revision']
         
         self.emg_mode = EMG_MODE['OFF']
+        self.classifier_mode = CLASSIFIER_MODE['DISABLED']
+        self.imu_mode = IMU_MODE['OFF']
       
         self.emg_x_axis = []
         self.emg_y_axis = []
@@ -221,53 +223,37 @@ class EMGGUI():
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
                 dpg.bind_item_font(dpg.last_item(), font_regular_14)                               
 
-            # dpg.add_text("IMU Signal - Accelerometer", pos=[35, 380])
-            # with dpg.plot(pos=[35, 400], height=100, width=350):
-            #     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis_acc", no_tick_labels=True)
-            #     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis_acc")
-            #     dpg.add_line_series([], [], label="signal", parent="y_axis_acc", tag="imu_ax")
-            #     dpg.add_line_series([], [], label="signal", parent="y_axis_acc", tag="imu_ay")
-            #     dpg.add_line_series([], [], label="signal", parent="y_axis_acc", tag="imu_az")
-
-            # dpg.add_text("IMU Signal - Gyroscope", pos=[35, 510])                    
-            # with dpg.plot(pos=[35, 530], height=100, width=350):
-            #     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis_gyr", no_tick_labels=True)
-            #     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis_gyr")
-            #     dpg.add_line_series([], [], label="gx", parent="y_axis_gyr", tag="imu_gx")
-            #     dpg.add_line_series([], [], label="gy", parent="y_axis_gyr", tag="imu_gy")
-            #     dpg.add_line_series([], [], label="gz", parent="y_axis_gyr", tag="imu_gz")
-
-            # dpg.add_text("IMU Signal - Magnetometer", pos=[35, 640])
-            # with dpg.plot(pos=[35, 660], height=100, width=350):
-            #     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis_mag", no_tick_labels=True)
-            #     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis_mag")
-            #     dpg.add_line_series([], [], label="signal", parent="y_axis_mag", tag="imu_mx")
-            #     dpg.add_line_series([], [], label="signal", parent="y_axis_mag", tag="imu_my")
-            #     dpg.add_line_series([], [], label="signal", parent="y_axis_mag", tag="imu_mz")                
-            # dpg.add_text("IMU Signals", pos=[35, 380])
-            # with dpg.plot(pos=[35, 400], height=300, width=350):
-            #     dpg.add_plot_axis(dpg.mvXAxis, tag="x_imu", no_tick_labels=True)
-            #     dpg.set_axis_limits("x_imu", 0, 30)
-            #     dpg.add_plot_axis(dpg.mvYAxis, tag="y_imu")
-            #     dpg.set_axis_limits("y_imu", -50,50)
-            #     # dpg.add_line_series([], [], label="signal", parent="y_imu", tag="imu1")
-            #     dpg.add_bar_series([], [], label="signal", weight=1, parent="y_imu", tag="imu1")
-
             dpg.add_text("EMG Mode", pos=[40, 300])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[110, 300], show=True, tag="emg_mode", callback=self.emg_mode_callback)
+            dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[110, 298], show=True, tag="emg_mode", callback=self.emg_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
-            # dpg.bind_item_theme(dpg.last_item(), start_button_theme)
 
-            # dpg.add_button(label="Start", width=202, height=40, pos=[35, 340], show=True, tag="start_button",callback=self.start_collecting_data)
-            # dpg.bind_item_font(dpg.last_item(), font_regular_14)
-            # dpg.bind_item_theme(dpg.last_item(), start_button_theme)
+            dpg.add_text("Classifier Mode", pos=[40, 340])
+            dpg.bind_item_theme(dpg.last_item(), center_button_theme)
+            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.add_combo(("ENABLED", "DISABLED"), default_value="DISABLED", width=115, pos=[135, 338], show=True, tag="classifier_mode", callback=self.classifier_mode_callback)
+            dpg.bind_item_theme(dpg.last_item(), center_button_theme)
+            dpg.bind_item_font(dpg.last_item(), font_regular_14)
 
-            # dpg.add_button(label="Stop", width=202, height=40, pos=[35, 340], show=False, tag="stop_button",callback=self.stop_collecting_data)
-            # dpg.bind_item_font(dpg.last_item(), font_regular_14)
-            # dpg.bind_item_theme(dpg.last_item(), stop_button_theme)
+            dpg.add_text("IMU Mode", pos=[40, 380])
+            dpg.bind_item_theme(dpg.last_item(), center_button_theme)
+            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.add_combo(("OFF", "SEND_DATA", "SEND_EVENTS", "SEND_ALL", "SEND_RAW"), default_value="OFF", width=140, pos=[110, 378], show=True, tag="imu_mode", callback=self.imu_mode_callback)
+            dpg.bind_item_theme(dpg.last_item(), center_button_theme)
+            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+
+            dpg.add_text("Pose", pos=[40, 452])
+            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.add_button(label = "REST", pos=[75, 454], width=60, tag="pose_display", small=True)
+            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_theme(dpg.last_item(), input_theme)
+
+            dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[40, 900], show=True, tag="sleep_button",callback=self.put_to_sleep)
+            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_theme(dpg.last_item(), stop_button_theme)
+
 
             with dpg.child_window(height=980, width=980, pos=[420, 40]):   #120
                 dpg.add_text("EMG Signal 1", pos=[10, 10])
@@ -311,7 +297,6 @@ class EMGGUI():
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis8")
                     dpg.add_line_series([], [], label="signal", parent="y_axis8", tag="signal_series8")
 
-                       
 
         dpg.create_viewport(title='EMG', width=1440, height=1064, x_pos=40, y_pos=40)
         dpg.bind_item_theme(window, data_theme)
@@ -321,11 +306,54 @@ class EMGGUI():
         dpg.set_primary_window("main_window", True)
 
 
+    def put_to_sleep(self, sender, data):
+        # Deep sleep command ######################################################################
+        # WARNING: This will immediately disconnect and put the Myo into a deep sleep that can only 
+        # be awakened by plugging it into USB
+        command = COMMAND['DEEP_SLEEP'] 
+        payload_byte_size = 1
+        command_header = struct.pack('<2B', command, payload_byte_size)
+        self.loop.create_task(self.client.write_gatt_char(self.command_characteristic, command_header, response=True))
+        ###########################################################################################
+
+
+
+    def imu_mode_callback(self, sender, data):
+        old_mode = self.imu_mode
+        self.imu_mode = IMU_MODE[data]
+
+        # Command to set EMG, IMU, and CLASSIFIER modes
+        command =  COMMAND['SET_EMG_IMU_MODE']          
+        payload_byte_size = 3
+        command_header = struct.pack('<5B', command, payload_byte_size, self.emg_mode, self.imu_mode, self.classifier_mode) #  b'\x01\x02\x00\x00'
+        self.loop.create_task(self.client.write_gatt_char(self.command_characteristic, command_header, response=True))
+        ###########################################################################################
+        # TODO: Implement IMU mode 
+        print("IMU Mode not implemented yet.")
+
+
+    def classifier_mode_callback(self, sender, data):
+        old_mode = self.classifier_mode
+        self.classifier_mode = CLASSIFIER_MODE[data]
+
+        # Command to set EMG, IMU, and CLASSIFIER modes
+        command =  COMMAND['SET_EMG_IMU_MODE']          
+        payload_byte_size = 3
+        command_header = struct.pack('<5B', command, payload_byte_size, self.emg_mode, self.imu_mode, self.classifier_mode) #  b'\x01\x02\x00\x00'
+        self.loop.create_task(self.client.write_gatt_char(self.command_characteristic, command_header, response=True))
+        ###########################################################################################
+        if old_mode == CLASSIFIER_MODE['DISABLED'] and self.classifier_mode == CLASSIFIER_MODE['ENABLED']:
+            self.loop.create_task(self.client.start_notify(self.classifier_event_characteristic, self.ble_notification_callback))
+        elif old_mode == CLASSIFIER_MODE['ENABLED'] and self.classifier_mode == CLASSIFIER_MODE['DISABLED']:
+            self.loop.create_task(self.client.stop_notify(self.classifier_event_characteristic))
+        
+
+
     def emg_mode_callback(self, sender, data):
         old_mode = self.emg_mode
         self.emg_mode = EMG_MODE[data]
 
-        # Command to set EMG and IMU modes
+        # Command to set EMG, IMU, and CLASSIFIER modes
         command =  COMMAND['SET_EMG_IMU_MODE']          
         imu_mode = IMU_MODE['OFF']
         classifier_mode = CLASSIFIER_MODE['ENABLED']
@@ -377,10 +405,10 @@ class EMGGUI():
                 pass
             case _:
                 classifier_event = "Unknown Event"
-        print_value = f"{classifier_event} >>> "
-        print_value += f"{classifier_value} " if classifier_value else ""
-        print_value += f"-- {x_direction}" if x_direction else ""
-        print(print_value) 
+        # print_value = f"{classifier_value} " if classifier_value else ""
+        # print_value += f"-- {x_direction}" if x_direction else ""
+        # print(print_value) 
+        dpg.configure_item("pose_display", label=classifier_value)
 
     def ble_notification_callback(self, handle, data):
         match handle:
@@ -436,48 +464,52 @@ class EMGGUI():
         dpg.destroy_context()
 
     async def process_emg_data(self):
-        last_recv_characteristic = 0
-        while not self.shutdown_event.is_set():
-            # print(self.emg_data_queue.qsize())
-            if self.running == True and self.emg_data_queue.qsize() > 0:
-                incoming_data = await self.emg_data_queue.get()
+        try:        
+            last_recv_characteristic = 0
+            while not self.shutdown_event.is_set():
+                # print(self.emg_data_queue.qsize())
+                if self.running == True and self.emg_data_queue.qsize() > 0:
+                    incoming_data = await self.emg_data_queue.get()
 
-                emg1 = incoming_data[:8]
-                emg2 = incoming_data[8:16]
-                recv_characteristic = incoming_data[16]
-                
-                progression = (recv_characteristic - last_recv_characteristic) % 4
-                if progression > 1:
-                    for i in range(1,progression):
-                        # print("packet not received")
-                        self.t += 5
-                        for _ in range(1,8):
-                            self.emg_x_axis[i].append(self.t)
-                            self.emg_y_axis[i].append(0)
-                last_recv_characteristic = recv_characteristic
-                
-                self.t += 10
-                for i in range(0,8):
-                    self.emg_x_axis[i].append(self.t - 5)
-                    self.emg_x_axis[i].append(self.t)
-                    self.emg_y_axis[i].append(emg1[i])
-                    self.emg_y_axis[i].append(emg2[i])
+                    emg1 = incoming_data[:8]
+                    emg2 = incoming_data[8:16]
+                    recv_characteristic = incoming_data[16]
+                    
+                    progression = (recv_characteristic - last_recv_characteristic) % 4
+                    if progression > 1:
+                        for i in range(1,progression):
+                            # print("packet not received")
+                            self.t += 5
+                            for _ in range(1,8):
+                                self.emg_x_axis[i].append(self.t)
+                                self.emg_y_axis[i].append(0)
+                    last_recv_characteristic = recv_characteristic
+                    
+                    self.t += 10
+                    for i in range(0,8):
+                        self.emg_x_axis[i].append(self.t - 5)
+                        self.emg_x_axis[i].append(self.t)
+                        self.emg_y_axis[i].append(emg1[i])
+                        self.emg_y_axis[i].append(emg2[i])
 
-            else:
-                await asyncio.sleep(0.0001)
+                else:
+                    await asyncio.sleep(0.0001)
+        except KeyboardInterrupt:
+            pass
  
 
     async def update_plots(self):
-        while not self.shutdown_event.is_set():
-            await asyncio.sleep(0.01)
-            for i in range(0,8):
-                self.emg_x_axis[i] = self.emg_x_axis[i][-self.window_size:]
-                self.emg_y_axis[i] = self.emg_y_axis[i][-self.window_size:] 
-                # start=time.time_ns() 2 025 000
-                dpg.set_value('signal_series' + str(i + 1), [self.emg_x_axis[i], self.emg_y_axis[i]])
-                dpg.fit_axis_data(   'x_axis' + str(i + 1))
-                dpg.set_axis_limits( 'y_axis' + str(i + 1), -200, 200) 
-
+        try:
+            while not self.shutdown_event.is_set():
+                await asyncio.sleep(0.01)
+                for i in range(0,8):
+                    self.emg_x_axis[i] = self.emg_x_axis[i][-self.window_size:]
+                    self.emg_y_axis[i] = self.emg_y_axis[i][-self.window_size:] 
+                    dpg.set_value('signal_series' + str(i + 1), [self.emg_x_axis[i], self.emg_y_axis[i]])
+                    dpg.fit_axis_data(   'x_axis' + str(i + 1))
+                    dpg.set_axis_limits( 'y_axis' + str(i + 1), -200, 200) 
+        except KeyboardInterrupt:
+            pass
  
 
     async def collect_emg_data(self):
@@ -521,10 +553,10 @@ class EMGGUI():
                 print(f"Serial Number: {serial_number}")
                                 
                 # Set the LED to a very nice purple
-                command = COMMAND['LED'] 
+                command = COMMAND['LED']
                 payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
                 payload_byte_size = len(payload)
-                command_header = struct.pack('<8B', command, payload_byte_size, *payload) 
+                command_header = struct.pack('<8B', command, payload_byte_size, *payload)
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)
                             
                 # send a short vibration to signify connection
@@ -535,6 +567,22 @@ class EMGGUI():
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
                 
 
+                # Extended Vibration mode ######################################################################
+                command = COMMAND['EXTENDED_VIBRATION'] 
+                steps = b''
+                # number_of_steps = 3 # set the number of times to vibrate        
+                # for _ in range(number_of_steps):
+                #     duration = 1000 # duration (in ms) of the vibration step
+                #     strength = 255 # strength of vibration step (0 - motor off, 255 - full speed)
+                #     steps += struct.pack('<HB', duration, strength)           
+                steps = struct.pack('<HBHB', 100, 100, 300, 200)
+                payload_byte_size = len(steps)
+                command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
+                await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
+
+
+                # classifier mode is enabled by default, so start the notifications
+                await self.client.start_notify(self.classifier_event_characteristic, self.ble_notification_callback)
 
                 try:
                     while not self.shutdown_event.is_set():
