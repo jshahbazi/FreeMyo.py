@@ -94,17 +94,12 @@ CLASSIFIER_MODE = {
 class EMGGUI():
     def __init__(self, device_config):  
         self.loop = asyncio.get_event_loop()
-        self.data_queue_0 = asyncio.Queue()
-        self.data_queue_1 = asyncio.Queue()
-        self.data_queue_2 = asyncio.Queue()
-        self.data_queue_3 = asyncio.Queue()
+        self.emg_data_queue = asyncio.Queue()
         self.running = False
         self.shutdown_event = asyncio.Event()
         self.is_paused = False
-        self.window_size = 8 * 200 * 60 # 8 samples * 200 times a second * 60 seconds
+        self.window_size = 200 * 30 # 200 times a second * 30 seconds
         self.emg_channels = 8
-        # self.signal_time = []
-        # self.sample_rollover_count = 0
         self.start_time = time.time()
         self.t = 0
         self.battery_level = 0
@@ -126,7 +121,7 @@ class EMGGUI():
         self.battery_level_characteristic = device_config['myo_armband']['characteristics']['battery_level']
         self.revision_characteristic = device_config['myo_armband']['characteristics']['revision']
         
-        self.emg_mode = EMG_MODE['RAW']
+        self.emg_mode = EMG_MODE['OFF']
       
         self.emg_x_axis = []
         self.emg_y_axis = []
@@ -134,34 +129,6 @@ class EMGGUI():
             self.emg_x_axis.append([0] * self.window_size)
             self.emg_y_axis.append([0] * self.window_size)
 
-        # self.imu_time_axis = [0.0] * self.window_size
-        # self.imu_gyro_x = [0.0] * self.window_size
-        # self.imu_gyro_y = [0.0] * self.window_size
-        # self.imu_gyro_z = [0.0] * self.window_size
-        # self.imu_accel_x = [0.0] * self.window_size
-        # self.imu_accel_y = [0.0] * self.window_size
-        # self.imu_accel_z = [0.0] * self.window_size   
-        # self.imu_mag_x = [0.0] * self.window_size
-        # self.imu_mag_y = [0.0] * self.window_size
-        # self.imu_mag_z = [0.0] * self.window_size             
-
-        # self.magnetometer_available = False
-
-        # self.yaw = 0.0
-        # self.pitch = 0.0
-        # self.roll = 0.0
-
-        # self.acc_x = 0.0
-        # self.acc_y = 0.0
-        # self.acc_z = 0.0
-        # self.gyr_x = 0.0
-        # self.gyr_y = 0.0
-        # self.gyr_z = 0.0
-        # self.mag_x = 0.0
-        # self.mag_y = 0.0
-        # self.mag_z = 0.0
-
-        # self.q = [1.0, 0.0, 0.0, 0.0]
 
         dpg.create_context()    
 
@@ -355,15 +322,8 @@ class EMGGUI():
 
 
     def emg_mode_callback(self, sender, data):
+        old_mode = self.emg_mode
         self.emg_mode = EMG_MODE[data]
-        if self.running == True and self.emg_mode != EMG_MODE['OFF']: # if we're changing the  mode while its already running
-            command =  COMMAND['SET_EMG_IMU_MODE']          
-            imu_mode = IMU_MODE['OFF']
-            classifier_mode = CLASSIFIER_MODE['ENABLED']
-            payload_byte_size = 3
-            command_header = struct.pack('<5B', command, payload_byte_size, EMG_MODE['OFF'], imu_mode, classifier_mode) #  b'\x01\x02\x00\x00'
-            self.loop.create_task(self.client.write_gatt_char(self.command_characteristic, command_header, response=True))
-            time.sleep(0.1) # need to hard sleep a bit to make sure everything gets shut off on the Myo
 
         # Command to set EMG and IMU modes
         command =  COMMAND['SET_EMG_IMU_MODE']          
@@ -376,12 +336,17 @@ class EMGGUI():
         
         if self.emg_mode in [EMG_MODE['RAW'], EMG_MODE['FILTERED']]:
             self.running = True
-            self.loop.create_task(self.client.start_notify(self.emg_data0_characteristic, self.ble_notification_callback))
-            self.loop.create_task(self.client.start_notify(self.emg_data1_characteristic, self.ble_notification_callback))
-            self.loop.create_task(self.client.start_notify(self.emg_data2_characteristic, self.ble_notification_callback))
-            self.loop.create_task(self.client.start_notify(self.emg_data3_characteristic, self.ble_notification_callback))
+            if old_mode == EMG_MODE['OFF']:
+                self.loop.create_task(self.client.start_notify(self.emg_data0_characteristic, self.ble_notification_callback))
+                self.loop.create_task(self.client.start_notify(self.emg_data1_characteristic, self.ble_notification_callback))
+                self.loop.create_task(self.client.start_notify(self.emg_data2_characteristic, self.ble_notification_callback))
+                self.loop.create_task(self.client.start_notify(self.emg_data3_characteristic, self.ble_notification_callback))
         elif self.emg_mode == EMG_MODE['OFF']:
             self.running = False
+            self.loop.create_task(self.client.stop_notify(self.emg_data0_characteristic))
+            self.loop.create_task(self.client.stop_notify(self.emg_data1_characteristic))
+            self.loop.create_task(self.client.stop_notify(self.emg_data2_characteristic))
+            self.loop.create_task(self.client.stop_notify(self.emg_data3_characteristic))             
         elif self.emg_mode == EMG_MODE['FILTERED_50HZ']:
             self.running = True
             self.loop.create_task(self.client.start_notify(self.filtered_50hz_characteristic, self.ble_notification_callback))            
@@ -439,45 +404,30 @@ class EMGGUI():
                                                     # This is really only noticeable when making a fist (perhaps because all the muscles tense)
                 print(f"EMG: {emg} - Intensity: {intensity_candidate}")
             case 42: # EMG 0
-                emg0 = struct.unpack('<16b', data)
-                self.loop.create_task(self.data_queue_0.put(emg0))
-                print(f"EMG 0: {emg0}")
-                # emg1 = struct.unpack('<8b', data[:8])
-                # emg2 = struct.unpack('<8b', data[8:])
-                # print(emg1)
-                # print(emg2)
+                emg0 = list(struct.unpack('<16b', data))
+                emg0.append(0)
+                self.loop.create_task(self.emg_data_queue.put(emg0))
             case 45: # EMG 1
-                emg1 = struct.unpack('<16b', data) 
-                self.loop.create_task(self.data_queue_1.put(emg1))
-                print(f"EMG 1: {emg1}")        
-                # emg3 = struct.unpack('<8b', data[:8])
-                # emg4 = struct.unpack('<8b', data[8:])
-                # print(emg3)
-                # print(emg4)
+                emg1 = list(struct.unpack('<16b', data))
+                emg1.append(1)
+                self.loop.create_task(self.emg_data_queue.put(emg1))
             case 48: # EMG 2
-                emg2 = struct.unpack('<16b', data)   
-                self.loop.create_task(self.data_queue_2.put(emg2)) 
-                print(f"EMG 2: {emg2}")   
-                # emg5 = struct.unpack('<8b', data[:8])
-                # emg6 = struct.unpack('<8b', data[8:])
-                # print(emg5)
-                # print(emg6)
+                emg2 = list(struct.unpack('<16b', data))
+                emg2.append(2)
+                self.loop.create_task(self.emg_data_queue.put(emg2))
             case 51: # EMG 3
-                emg3 = struct.unpack('<16b', data)  
-                self.loop.create_task(self.data_queue_3.put(emg3))
-                print(f"EMG 3: {emg3}")   
-                # emg7 = struct.unpack('<8b', data[:8])
-                # emg8 = struct.unpack('<8b', data[8:])
-                # print(emg7)
-                # print(emg8)
+                emg3 = list(struct.unpack('<16b', data))
+                emg3.append(3)
+                self.loop.create_task(self.emg_data_queue.put(emg3))
             case _:
                 print(f"Unknown Characteristic: Handle: {handle} Data: {data}")
 
     async def run(self):
-        asyncio.create_task(self.collect_emg_data())           
+        asyncio.create_task(self.collect_emg_data())
+        asyncio.create_task(self.process_emg_data())
+        asyncio.create_task(self.update_plots())
         while dpg.is_dearpygui_running():
             await asyncio.sleep(0.001)
-            await self.update_plots()
             dpg.render_dearpygui_frame()
         await asyncio.sleep(0.01)
         self.running = False
@@ -485,108 +435,48 @@ class EMGGUI():
         time.sleep(0.1)      
         dpg.destroy_context()
 
+    async def process_emg_data(self):
+        last_recv_characteristic = 0
+        while not self.shutdown_event.is_set():
+            # print(self.emg_data_queue.qsize())
+            if self.running == True and self.emg_data_queue.qsize() > 0:
+                incoming_data = await self.emg_data_queue.get()
 
-    # def start_collecting_data(self):
-    #     self.running = True
-    #     self.start_time = time.time()        
-    #     dpg.configure_item("start_button", show=False)
-    #     dpg.configure_item("stop_button", show=True)
+                emg1 = incoming_data[:8]
+                emg2 = incoming_data[8:16]
+                recv_characteristic = incoming_data[16]
+                
+                progression = (recv_characteristic - last_recv_characteristic) % 4
+                if progression > 1:
+                    for i in range(1,progression):
+                        # print("packet not received")
+                        self.t += 5
+                        for _ in range(1,8):
+                            self.emg_x_axis[i].append(self.t)
+                            self.emg_y_axis[i].append(0)
+                last_recv_characteristic = recv_characteristic
+                
+                self.t += 10
+                for i in range(0,8):
+                    self.emg_x_axis[i].append(self.t - 5)
+                    self.emg_x_axis[i].append(self.t)
+                    self.emg_y_axis[i].append(emg1[i])
+                    self.emg_y_axis[i].append(emg2[i])
 
-
-    # def stop_collecting_data(self):
-    #     self.running = False    
-    #     dpg.configure_item("start_button", show=True)
-    #     dpg.configure_item("stop_button", show=False)
-
+            else:
+                await asyncio.sleep(0.0001)
+ 
 
     async def update_plots(self):
-        # print(f"Running: {self.running} Queue Size: {self.data_queue_0.qsize()}")
-        if self.running == True and self.data_queue_0.qsize() > 0:
-            incoming_data_0 = await self.data_queue_0.get()
-            emg1 = incoming_data_0[:8]
-            emg2 = incoming_data_0[8:]
-            print(f"1: {emg1}")
-            print(f"2: {emg2}")
-
-        if self.running == True and self.data_queue_1.qsize() > 0:
-            incoming_data_1 = await self.data_queue_1.get()
-            emg3 = incoming_data_1[:8]
-            emg4 = incoming_data_1[8:]   
-            print(f"3: {emg3}")
-            print(f"4: {emg4}")      
-
-        if self.running == True and self.data_queue_2.qsize() > 0:
-            incoming_data_2 = await self.data_queue_2.get()
-            emg5 = incoming_data_2[:8]
-            emg6 = incoming_data_2[8:] 
-            print(f"5: {emg5}")
-            print(f"6: {emg6}")                          
-
-        if self.running == True and self.data_queue_3.qsize() > 0:
-            incoming_data_3 = await self.data_queue_3.get()
-            emg7 = incoming_data_3[:8]
-            emg8 = incoming_data_3[8:]      
-            print(f"7: {emg7}")
-            print(f"8: {emg8}")                    
-
-            # for current_sample in range(sample_count):              
-            #     samples = incoming_data['samples'][current_sample]
-            #     emg_samples = samples[0:8]          
-
-            #     for index,value in enumerate(emg_samples):
-            #         emg_data_point = float(value)
-            #         if index >= 0 and index <= (self.emg_channels - 1):
-            #             self.emg_x_axis[index].append(self.t)
-            #             self.emg_x_axis[index] = self.emg_x_axis[index][-self.window_size:]                
-            #             self.emg_y_axis[index].append(emg_data_point)
-            #             self.emg_y_axis[index] = self.emg_y_axis[index][-self.window_size:]   
-            #             plot_tag = 'signal_series' + str(index + 1)
-            #             dpg.set_value(plot_tag, [self.emg_x_axis[index], self.emg_y_axis[index]])
-            #             x_axis_tag = 'x_axis' + str(index + 1)
-            #             dpg.fit_axis_data(x_axis_tag)
-            #             y_axis_tag = 'y_axis' + str(index + 1)
-            #             dpg.set_axis_limits(y_axis_tag, -200, 200)    
-
-            #     self.imu_time_axis.append(self.t)
-            #     self.imu_time_axis = self.imu_time_axis[-self.window_size:]  
-
-            #     self.imu_gyro_x.append(self.gyr_x)
-            #     self.imu_gyro_x = self.imu_gyro_x[-self.window_size:] 
-            #     self.imu_gyro_y.append(self.gyr_y)
-            #     self.imu_gyro_y = self.imu_gyro_y[-self.window_size:] 
-            #     self.imu_gyro_z.append(self.gyr_z)
-            #     self.imu_gyro_z = self.imu_gyro_z[-self.window_size:]   
-
-            #     dpg.set_value("imu_gx", [self.imu_time_axis, self.imu_gyro_x])
-            #     dpg.set_value("imu_gy", [self.imu_time_axis, self.imu_gyro_y])
-            #     dpg.set_value("imu_gz", [self.imu_time_axis, self.imu_gyro_z])
-            #     dpg.fit_axis_data("x_axis_gyr")
-            #     dpg.set_axis_limits("y_axis_gyr", -50,50)                
-
-            #     self.imu_accel_x.append(self.acc_x)
-            #     self.imu_accel_x = self.imu_accel_x[-self.window_size:] 
-            #     self.imu_accel_y.append(self.acc_y)
-            #     self.imu_accel_y = self.imu_accel_y[-self.window_size:] 
-            #     self.imu_accel_z.append(self.acc_z)
-            #     self.imu_accel_z = self.imu_accel_z[-self.window_size:]                                 
-
-            #     dpg.set_value("imu_ax", [self.imu_time_axis, self.imu_accel_x])
-            #     dpg.set_value("imu_ay", [self.imu_time_axis, self.imu_accel_y])
-            #     dpg.set_value("imu_az", [self.imu_time_axis, self.imu_accel_z])
-            #     dpg.fit_axis_data("x_axis_acc")
-            #     dpg.set_axis_limits("y_axis_acc", -1,1.2)
-
-            #     self.imu_mag_x.append(self.mag_x)
-            #     self.imu_mag_x = self.imu_mag_x[-self.window_size:] 
-            #     self.imu_mag_y.append(self.mag_y)
-            #     self.imu_mag_y = self.imu_mag_y[-self.window_size:] 
-            #     self.imu_mag_z.append(self.mag_z)
-            #     self.imu_mag_z = self.imu_mag_z[-self.window_size:]
-            #     dpg.set_value("imu_mx", [self.imu_time_axis, self.imu_mag_x])
-            #     dpg.set_value("imu_my", [self.imu_time_axis, self.imu_mag_y])
-            #     dpg.set_value("imu_mz", [self.imu_time_axis, self.imu_mag_z])
-            #     dpg.fit_axis_data("x_axis_mag")
-            #     dpg.fit_axis_data("y_axis_mag")
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(0.01)
+            for i in range(0,8):
+                self.emg_x_axis[i] = self.emg_x_axis[i][-self.window_size:]
+                self.emg_y_axis[i] = self.emg_y_axis[i][-self.window_size:] 
+                # start=time.time_ns() 2 025 000
+                dpg.set_value('signal_series' + str(i + 1), [self.emg_x_axis[i], self.emg_y_axis[i]])
+                dpg.fit_axis_data(   'x_axis' + str(i + 1))
+                dpg.set_axis_limits( 'y_axis' + str(i + 1), -200, 200) 
 
  
 
