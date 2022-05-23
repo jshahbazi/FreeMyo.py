@@ -1,7 +1,7 @@
 import asyncio, time, struct, yaml
 import dearpygui.dearpygui as dpg
 from bleak import BleakClient, BleakError
-
+import pymysql.cursors
 
 CLASSIFIER_EVENT_TYPES = {
     1: 'ARM_SYNCED',
@@ -120,6 +120,13 @@ class EMGGUI():
         self.device_info_characteristic = device_config['myo_armband']['characteristics']['device_info']
         self.battery_level_characteristic = device_config['myo_armband']['characteristics']['battery_level']
         self.revision_characteristic = device_config['myo_armband']['characteristics']['revision']
+
+        self.database = {}
+        self.database['address'] = device_config['database']['address']
+        self.database['port'] = device_config['database']['port']
+        self.database['password'] = device_config['database']['password']
+        self.database['schema'] = device_config['database']['schema']
+        self.database['table'] = device_config['database']['table']
         
         self.emg_mode = EMG_MODE['OFF']
         self.classifier_mode = CLASSIFIER_MODE['DISABLED']
@@ -131,6 +138,7 @@ class EMGGUI():
             self.emg_x_axis.append([0] * self.window_size)
             self.emg_y_axis.append([0] * self.window_size)
 
+        self.db_connection = None
 
         dpg.create_context()    
 
@@ -250,6 +258,10 @@ class EMGGUI():
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), input_theme)
 
+            dpg.add_button(label="Connect to Database", pos=[148, 12], width=60, tag="database_button", small=True, callback=self.db_connect)
+            dpg.bind_item_theme(dpg.last_item(), input_theme)
+            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+
             dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[40, 900], show=True, tag="sleep_button",callback=self.put_to_sleep)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), stop_button_theme)
@@ -305,6 +317,36 @@ class EMGGUI():
         dpg.set_exit_callback(self.teardown)
         dpg.set_primary_window("main_window", True)
 
+
+    def db_connect(self):
+        self.db_connection = pymysql.connect(host=self.database['host'],
+                                        user=self.database['user'],
+                                        db=self.database['schema'],
+                                        charset='utf8mb4',
+                                        cursorclass=pymysql.cursors.DictCursor)
+        
+    def write_to_db(self, time, emg_sensor_data):
+        with self.connection.cursor() as cursor:
+                sql = """
+                    INSERT INTO `data`
+                    (`time`,`emg_sensor_1`,`emg_sensor_2`,`emg_sensor_3`,`emg_sensor_4`,`emg_sensor_5`,`emg_sensor_6`,`emg_sensor_7`,`emg_sensor_8`) 
+                    VALUES 
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                cursor.execute(sql, 
+                    (
+                    time,
+                    emg_sensor_data[0],
+                    emg_sensor_data[1],
+                    emg_sensor_data[2],
+                    emg_sensor_data[3],
+                    emg_sensor_data[4],
+                    emg_sensor_data[5],
+                    emg_sensor_data[6],
+                    emg_sensor_data[7],
+                    )
+                )
+        self.connection.commit()
 
     def put_to_sleep(self, sender, data):
         # Deep sleep command ######################################################################
@@ -483,6 +525,7 @@ class EMGGUI():
                             for _ in range(1,8):
                                 self.emg_x_axis[i].append(self.t)
                                 self.emg_y_axis[i].append(0)
+                                self.write_to_db(self.t, [0] * 8)
                     last_recv_characteristic = recv_characteristic
                     
                     self.t += 10
@@ -491,6 +534,8 @@ class EMGGUI():
                         self.emg_x_axis[i].append(self.t)
                         self.emg_y_axis[i].append(emg1[i])
                         self.emg_y_axis[i].append(emg2[i])
+                        self.write_to_db(self.t, emg1[i])
+                        self.write_to_db(self.t, emg2[i])
 
                 else:
                     await asyncio.sleep(0.0001)
@@ -552,6 +597,15 @@ class EMGGUI():
                 serial_number = '-'.join(map(str, info[0:6]))
                 print(f"Serial Number: {serial_number}")
                                 
+                # # Unlock command ######################################################################
+                # command = COMMAND['UNLOCK']
+                # lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
+                # payload_byte_size = 1
+                # command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
+                # await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
+                # #######################################################################################
+
+
                 # Set the LED to a very nice purple
                 command = COMMAND['LED']
                 payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
@@ -560,25 +614,13 @@ class EMGGUI():
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)
                             
                 # # send a short vibration to signify connection
-                # command = COMMAND['VIBRATE'] 
-                # vibration_type = VIBRATION_DURATION['SHORT']
-                # payload_byte_size = 1
-                # command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
-                # await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
-                
-                # Extended Vibration mode ######################################################################
-                command = COMMAND['EXTENDED_VIBRATION'] 
-                steps = b''
-                # number_of_steps = 3 # set the number of times to vibrate        
-                # for _ in range(number_of_steps):
-                #     duration = 1000 # duration (in ms) of the vibration step
-                #     strength = 255 # strength of vibration step (0 - motor off, 255 - full speed)
-                #     steps += struct.pack('<HB', duration, strength)           
-                steps = struct.pack('<HBHB', 100, 100, 300, 200)
-                payload_byte_size = len(steps)
-                command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
+                command = COMMAND['VIBRATE'] 
+                vibration_type = VIBRATION_DURATION['SHORT']
+                payload_byte_size = 1
+                command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
-
+                await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
+                
 
                 try:
                     while not self.shutdown_event.is_set():

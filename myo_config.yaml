@@ -13,3 +13,11 @@ myo_armband:
     filtered_50hz_emg: d5060104-a904-deb9-4748-2c7f4a124842    
     manufacturer: 00002a29-0000-1000-8000-00805f9b34fb
     revision: d5060201-a904-deb9-4748-2c7f4a124842
+
+database:
+  address: localhost
+  port: 5379
+  user: root
+  password: changeme
+  schema: emg
+  table: data
