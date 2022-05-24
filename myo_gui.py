@@ -355,6 +355,7 @@ class EMGGUI():
         try:
             self.db_connection = pymysql.connect(host=self.database['host'],
                                             user=self.database['user'],
+                                            # password=self.database['password'],
                                             db=self.database['schema'],
                                             charset='utf8mb4',
                                             cursorclass=pymysql.cursors.DictCursor)
