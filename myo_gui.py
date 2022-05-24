@@ -508,9 +508,6 @@ class EMGGUI():
                 classifier_value = 'SYNC_FAILED'
             case _:
                 classifier_event = "Unknown Event"
-        # print_value = f"{classifier_value} " if classifier_value else ""
-        # print_value += f"-- {x_direction}" if x_direction else ""
-        # print(print_value) 
         dpg.configure_item("pose_display", label=classifier_value)
 
     def ble_notification_callback(self, handle, data):
@@ -566,6 +563,30 @@ class EMGGUI():
         time.sleep(0.1)      
         dpg.destroy_context()
 
+                    
+    # Data samples each contain 8 individual samples (one from each EMG sensor) and are broken up among 4 BLE characteristics
+    # because of BLE limitations.
+    # They are sent in order, so if one isn't received, it should be considered lost.
+    # EmgData0Characteristic  
+    #     Sample1
+    #     Sample2
+    # EmgData1Characteristic  
+    #     Sample3
+    #     Sample4
+    # EmgData2Characteristic  
+    #     Sample5
+    #     Sample6
+    # EmgData3Characteristic  
+    #     Sample7
+    #     Sample8
+    #
+    # and back to 0...
+    #
+    # EmgData0Characteristic  
+    #     Sample9
+    #     Sample10
+    #
+    # The actual characteristic number is added by the ble_notification_callback to the end of the packet when it is received
     async def process_emg_data(self):
         try:        
             last_recv_characteristic = 0
@@ -577,10 +598,10 @@ class EMGGUI():
                     emg1 = incoming_data[:8]
                     emg2 = incoming_data[8:16]
                     recv_characteristic = incoming_data[16]
-                    
-                    progression = (recv_characteristic - last_recv_characteristic) % 4
-                    if progression > 1:
-                        for i in range(1,progression):
+
+                    characteristic_progression = (recv_characteristic - last_recv_characteristic) % 4
+                    if characteristic_progression > 1:
+                        for i in range(1,characteristic_progression):
                             # print("packet not received")
                             self.t += 5
                             for _ in range(1,8):
