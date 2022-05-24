@@ -99,7 +99,7 @@ class EMGGUI():
         self.running = False
         self.shutdown_event = asyncio.Event()
         self.is_paused = False
-        self.window_size = 200 * 30 # 200 times a second * 30 seconds
+        self.window_size = 200 * 30 # 200 Hz * 30 seconds
         self.emg_channels = 8
         self.start_time = time.time()
         self.t = 0
@@ -149,9 +149,9 @@ class EMGGUI():
 
     def build_gui(self):
         with dpg.font_registry():
-            font_regular_12 = dpg.add_font("fonts/Inter-Regular.ttf", 14)
-            font_regular_14 = dpg.add_font("fonts/Inter-Regular.ttf", 18)
-            font_regular_24 = dpg.add_font("fonts/DroidSansMono.otf", 36)         
+            font_regular_12 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 14)
+            font_regular_14 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 18)
+            font_regular_24 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 36)         
 
         with dpg.theme() as data_theme:
             with dpg.theme_component(dpg.mvAll):
@@ -274,14 +274,21 @@ class EMGGUI():
             dpg.bind_item_theme(dpg.last_item(), input_theme)
 
             y_pos += 60
-            dpg.add_button(label="Connect to Database", pos=[x_pos, y_pos], width=60, tag="database_button", small=True, callback=self.db_connect)
-            dpg.bind_item_theme(dpg.last_item(), input_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
-
-            y_pos += 40
-            dpg.add_button(label="Disconnect from Database", pos=[x_pos, y_pos], width=60, tag="database_button2", small=True, callback=self.db_disconnect)
-            dpg.bind_item_theme(dpg.last_item(), input_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)            
+            with dpg.child_window(height=100, width=300, pos=[x_pos-5, y_pos]):    
+                dpg.add_text("Database Status:", pos=[12, 10])
+                dpg.bind_item_font(dpg.last_item(), font_regular_12)  
+                dpg.add_button(label="Disconnected", pos=[125, 10], width=150, show=True, tag="disconnected_database_button")
+                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_theme(dpg.last_item(), connection_disconnected_button_theme)            
+                dpg.add_button(label="Connected", pos=[125, 10], width=150, show=False, tag="connected_database_button")
+                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_theme(dpg.last_item(), connection_connected_button_theme)                        
+                dpg.add_button(label="Connect", pos=[10, 40], width=60, tag="database_button", small=True, callback=self.db_connect)
+                dpg.bind_item_theme(dpg.last_item(), input_theme)
+                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.add_button(label="Disconnect", pos=[10, 70], width=60, tag="database_button2", small=True, callback=self.db_disconnect)
+                dpg.bind_item_theme(dpg.last_item(), input_theme)
+                dpg.bind_item_font(dpg.last_item(), font_regular_14)            
 
             y_pos += 400
             dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[x_pos, y_pos], show=True, tag="sleep_button",callback=self.put_to_sleep)
@@ -355,6 +362,8 @@ class EMGGUI():
             if self.db_connection: 
                 self.db_connected = True
                 self.batch_start_time = int(time.time())
+                dpg.configure_item("disconnected_database_button", show=False)
+                dpg.configure_item("connected_database_button", show=True)                  
         except Exception as e:
             print(e)
 
@@ -362,6 +371,8 @@ class EMGGUI():
         try:
             self.db_connection.close()
             self.db_connected = False
+            dpg.configure_item("disconnected_database_button", show=True)
+            dpg.configure_item("connected_database_button", show=False)            
         except Exception as e:
             print(e)            
         
@@ -486,15 +497,15 @@ class EMGGUI():
                 classifier_value = ARM_VALUES[value_id]
                 x_direction = XDIRECTION_VALUES[x_direction_id]
             case 'ARM_UNSYNCED':
-                pass
+                classifier_value = 'UNSYNCED'
             case 'POSE':
                 classifier_value = POSE_VALUES[value_id]
             case 'UNLOCKED':
-                pass
+                classifier_value = 'UNLOCKED'
             case 'LOCKED':
-                pass
+                classifier_value = 'LOCKED'
             case 'SYNC_FAILED':
-                pass
+                classifier_value = 'SYNC_FAILED'
             case _:
                 classifier_event = "Unknown Event"
         # print_value = f"{classifier_value} " if classifier_value else ""
@@ -606,7 +617,7 @@ class EMGGUI():
                     self.emg_y_axis[i] = self.emg_y_axis[i][-self.window_size:] 
                     dpg.set_value('signal_series' + str(i + 1), [self.emg_x_axis[i], self.emg_y_axis[i]])
                     dpg.fit_axis_data(   'x_axis' + str(i + 1))
-                    dpg.set_axis_limits( 'y_axis' + str(i + 1), -200, 200) 
+                    dpg.set_axis_limits( 'y_axis' + str(i + 1), -150, 150) 
         except KeyboardInterrupt:
             pass
  
@@ -724,5 +735,5 @@ async def main():
 if __name__ == '__main__':
     try:
         asyncio.run(main())
-    except (KeyboardInterrupt, RuntimeError):
+    except (KeyboardInterrupt): #, RuntimeError):
         pass
