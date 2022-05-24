@@ -2,7 +2,6 @@ import asyncio, time, struct, yaml
 import dearpygui.dearpygui as dpg
 from bleak import BleakClient, BleakError
 import pymysql.cursors
-import random
 
 CLASSIFIER_EVENT_TYPES = {
     1: 'ARM_SYNCED',
@@ -149,9 +148,9 @@ class EMGGUI():
 
     def build_gui(self):
         with dpg.font_registry():
-            font_regular_12 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 14)
-            font_regular_14 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 18)
-            font_regular_24 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 36)         
+            font_regular_16 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 16)
+            font_regular_20 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 20)
+            font_regular_36 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 36)         
 
         with dpg.theme() as data_theme:
             with dpg.theme_component(dpg.mvAll):
@@ -204,95 +203,95 @@ class EMGGUI():
         with dpg.window(tag="main_window", width=1440, height=1024) as window:            
             y_pos += 40
             dpg.add_text("FreeMyo", pos=[x_pos, y_pos])
-            dpg.bind_item_font(dpg.last_item(), font_regular_24)
+            dpg.bind_item_font(dpg.last_item(), font_regular_36)
 
             y_pos += 50
             dpg.add_text("Connection Status:", pos=[x_pos, y_pos+2])
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
             dpg.add_button(label="Disconnected", pos=[x_pos+115, y_pos], width=150, show=True, tag="disconnected_button")
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), connection_disconnected_button_theme)            
             dpg.add_button(label="Connected", pos=[x_pos+115, y_pos], width=150, show=False, tag="connected_button")
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), connection_connected_button_theme)            
             dpg.add_button(label="Connecting...", pos=[x_pos+115, y_pos], width=150, show=False, tag="connecting_button")
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), connection_connecting_button_theme)            
 
             y_pos += 50
             with dpg.child_window(height=100, width=200, pos=[x_pos-5, y_pos]):
                 dpg.add_text("Battery Level", pos=[10, 10])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)
                 dpg.add_button(label = self.battery_level, pos=[148, 12], width=60, tag="battery_level", small=True)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
                 dpg.add_text("Signal Strength (dBm)", pos=[10, 35])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)
                 dpg.add_button(label = self.signal_strength, pos=[140, 37], width=60, tag="signal_strength_value", small=True)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)       
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)       
 
                 dpg.add_text("Firmware Version", pos=[10, 70])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)
                 dpg.add_button(label = self.firmware_revision, pos=[110, 72], width=40, tag="firmware_revision", small=True)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)                               
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)                               
 
             y_pos += 140
             dpg.add_text("EMG Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
             dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[x_pos+70, y_pos-2], show=True, tag="emg_mode", callback=self.emg_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
             y_pos += 40
             dpg.add_text("Classifier Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
             dpg.add_combo(("ENABLED", "DISABLED"), default_value="DISABLED", width=115, pos=[x_pos+95, y_pos-2], show=True, tag="classifier_mode", callback=self.classifier_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
             y_pos += 40
             dpg.add_text("IMU Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
             dpg.add_combo(("OFF", "SEND_DATA", "SEND_EVENTS", "SEND_ALL", "SEND_RAW"), default_value="OFF", width=140, pos=[x_pos+70, y_pos-2], show=True, tag="imu_mode", callback=self.imu_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
             y_pos += 70
             dpg.add_text("Pose", pos=[x_pos, y_pos])
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
             dpg.add_button(label = "REST", pos=[x_pos+35, y_pos+2], width=60, tag="pose_display", small=True)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), input_theme)
 
             y_pos += 60
             with dpg.child_window(height=100, width=300, pos=[x_pos-5, y_pos]):    
                 dpg.add_text("Database Status:", pos=[12, 10])
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)  
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)  
                 dpg.add_button(label="Disconnected", pos=[125, 10], width=150, show=True, tag="disconnected_database_button")
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
                 dpg.bind_item_theme(dpg.last_item(), connection_disconnected_button_theme)            
                 dpg.add_button(label="Connected", pos=[125, 10], width=150, show=False, tag="connected_database_button")
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
                 dpg.bind_item_theme(dpg.last_item(), connection_connected_button_theme)                        
                 dpg.add_button(label="Connect", pos=[10, 40], width=60, tag="database_button", small=True, callback=self.db_connect)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
                 dpg.add_button(label="Disconnect", pos=[10, 70], width=60, tag="database_button2", small=True, callback=self.db_disconnect)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)            
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)            
 
             y_pos += 400
             dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[x_pos, y_pos], show=True, tag="sleep_button",callback=self.put_to_sleep)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), stop_button_theme)
 
 
