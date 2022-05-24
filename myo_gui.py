@@ -2,6 +2,7 @@ import asyncio, time, struct, yaml
 import dearpygui.dearpygui as dpg
 from bleak import BleakClient, BleakError
 import pymysql.cursors
+import random
 
 CLASSIFIER_EVENT_TYPES = {
     1: 'ARM_SYNCED',
@@ -122,11 +123,14 @@ class EMGGUI():
         self.revision_characteristic = device_config['myo_armband']['characteristics']['revision']
 
         self.database = {}
-        self.database['address'] = device_config['database']['address']
+        self.database['host'] = device_config['database']['host']
         self.database['port'] = device_config['database']['port']
+        self.database['user'] = device_config['database']['user']
         self.database['password'] = device_config['database']['password']
         self.database['schema'] = device_config['database']['schema']
         self.database['table'] = device_config['database']['table']
+
+        self.batch_start_time = 0
         
         self.emg_mode = EMG_MODE['OFF']
         self.classifier_mode = CLASSIFIER_MODE['DISABLED']
@@ -139,6 +143,7 @@ class EMGGUI():
             self.emg_y_axis.append([0] * self.window_size)
 
         self.db_connection = None
+        self.db_connected = False
 
         dpg.create_context()    
 
@@ -193,23 +198,29 @@ class EMGGUI():
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (36, 40, 42), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (36, 40, 42), category=dpg.mvThemeCat_Core)
 
-        with dpg.window(tag="main_window", width=1440, height=1024) as window:
-            dpg.add_text("FreeMyo", pos=[40, 40])
+        
+        x_pos = 40
+        y_pos = 0
+        with dpg.window(tag="main_window", width=1440, height=1024) as window:            
+            y_pos += 40
+            dpg.add_text("FreeMyo", pos=[x_pos, y_pos])
             dpg.bind_item_font(dpg.last_item(), font_regular_24)
 
-            dpg.add_text("Connection Status:", pos=[40, 92])
+            y_pos += 50
+            dpg.add_text("Connection Status:", pos=[x_pos, y_pos+2])
             dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_button(label="Disconnected", pos=[155, 90], width=150, show=True, tag="disconnected_button")
+            dpg.add_button(label="Disconnected", pos=[x_pos+115, y_pos], width=150, show=True, tag="disconnected_button")
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), connection_disconnected_button_theme)            
-            dpg.add_button(label="Connected", pos=[155, 90], width=150, show=False, tag="connected_button")
+            dpg.add_button(label="Connected", pos=[x_pos+115, y_pos], width=150, show=False, tag="connected_button")
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), connection_connected_button_theme)            
-            dpg.add_button(label="Connecting...", pos=[155, 90], width=150, show=False, tag="connecting_button")
+            dpg.add_button(label="Connecting...", pos=[x_pos+115, y_pos], width=150, show=False, tag="connecting_button")
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), connection_connecting_button_theme)            
 
-            with dpg.child_window(height=100, width=200, pos=[35, 160]):
+            y_pos += 50
+            with dpg.child_window(height=100, width=200, pos=[x_pos-5, y_pos]):
                 dpg.add_text("Battery Level", pos=[10, 10])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
                 dpg.bind_item_font(dpg.last_item(), font_regular_12)
@@ -231,80 +242,96 @@ class EMGGUI():
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
                 dpg.bind_item_font(dpg.last_item(), font_regular_14)                               
 
-            dpg.add_text("EMG Mode", pos=[40, 300])
+            y_pos += 140
+            dpg.add_text("EMG Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[110, 298], show=True, tag="emg_mode", callback=self.emg_mode_callback)
+            dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[x_pos+70, y_pos-2], show=True, tag="emg_mode", callback=self.emg_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
 
-            dpg.add_text("Classifier Mode", pos=[40, 340])
+            y_pos += 40
+            dpg.add_text("Classifier Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("ENABLED", "DISABLED"), default_value="DISABLED", width=115, pos=[135, 338], show=True, tag="classifier_mode", callback=self.classifier_mode_callback)
+            dpg.add_combo(("ENABLED", "DISABLED"), default_value="DISABLED", width=115, pos=[x_pos+95, y_pos-2], show=True, tag="classifier_mode", callback=self.classifier_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
 
-            dpg.add_text("IMU Mode", pos=[40, 380])
+            y_pos += 40
+            dpg.add_text("IMU Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("OFF", "SEND_DATA", "SEND_EVENTS", "SEND_ALL", "SEND_RAW"), default_value="OFF", width=140, pos=[110, 378], show=True, tag="imu_mode", callback=self.imu_mode_callback)
+            dpg.add_combo(("OFF", "SEND_DATA", "SEND_EVENTS", "SEND_ALL", "SEND_RAW"), default_value="OFF", width=140, pos=[x_pos+70, y_pos-2], show=True, tag="imu_mode", callback=self.imu_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
 
-            dpg.add_text("Pose", pos=[40, 452])
+            y_pos += 70
+            dpg.add_text("Pose", pos=[x_pos, y_pos])
             dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_button(label = "REST", pos=[75, 454], width=60, tag="pose_display", small=True)
+            dpg.add_button(label = "REST", pos=[x_pos+35, y_pos+2], width=60, tag="pose_display", small=True)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), input_theme)
 
-            dpg.add_button(label="Connect to Database", pos=[148, 12], width=60, tag="database_button", small=True, callback=self.db_connect)
+            y_pos += 60
+            dpg.add_button(label="Connect to Database", pos=[x_pos, y_pos], width=60, tag="database_button", small=True, callback=self.db_connect)
             dpg.bind_item_theme(dpg.last_item(), input_theme)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
 
-            dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[40, 900], show=True, tag="sleep_button",callback=self.put_to_sleep)
+            y_pos += 40
+            dpg.add_button(label="Disconnect from Database", pos=[x_pos, y_pos], width=60, tag="database_button2", small=True, callback=self.db_disconnect)
+            dpg.bind_item_theme(dpg.last_item(), input_theme)
+            dpg.bind_item_font(dpg.last_item(), font_regular_14)            
+
+            y_pos += 400
+            dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[x_pos, y_pos], show=True, tag="sleep_button",callback=self.put_to_sleep)
             dpg.bind_item_font(dpg.last_item(), font_regular_14)
             dpg.bind_item_theme(dpg.last_item(), stop_button_theme)
 
 
-            with dpg.child_window(height=980, width=980, pos=[420, 40]):   #120
-                dpg.add_text("EMG Signal 1", pos=[10, 10])
-                with dpg.plot(pos=[10, 30], height=100, width=950):
+            x_pos = 420
+            y_pos = 40
+            with dpg.child_window(height=980, width=980, pos=[x_pos, y_pos]):
+                graph_x_pos = 10
+                graph_height = 100
+                graph_width = 950
+                dpg.add_text("EMG Signal 1", pos=[graph_x_pos, 10])
+                with dpg.plot(pos=[graph_x_pos, 30], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis1", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis1")
-                    dpg.add_line_series([], [], label="signal", parent="y_axis1", tag="signal_series1")
-                dpg.add_text("EMG Signal 2", pos=[10, 130])
-                with dpg.plot(pos=[10, 150], height=100, width=950):
+                    dpg.add_line_series([], [], label="signal", parent="y_axis1", tag="signal_series1")      
+                dpg.add_text("EMG Signal 2", pos=[graph_x_pos, 130])
+                with dpg.plot(pos=[graph_x_pos, 150], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis2", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis2")
                     dpg.add_line_series([], [], label="signal", parent="y_axis2", tag="signal_series2")
-                dpg.add_text("EMG Signal 3", pos=[10, 250]) 
-                with dpg.plot(pos=[10, 270], height=100, width=950):
+                dpg.add_text("EMG Signal 3", pos=[graph_x_pos, 250]) 
+                with dpg.plot(pos=[graph_x_pos, 270], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis3", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis3")
                     dpg.add_line_series([], [], label="signal", parent="y_axis3", tag="signal_series3")
-                dpg.add_text("EMG Signal 4", pos=[10, 370])
-                with dpg.plot(pos=[10, 390], height=100, width=950):
+                dpg.add_text("EMG Signal 4", pos=[graph_x_pos, 370])
+                with dpg.plot(pos=[graph_x_pos, 390], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis4", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis4")
                     dpg.add_line_series([], [], label="signal", parent="y_axis4", tag="signal_series4")
-                dpg.add_text("EMG Signal 5", pos=[10, 490])
-                with dpg.plot(pos=[10, 510], height=100, width=950):
+                dpg.add_text("EMG Signal 5", pos=[graph_x_pos, 490])
+                with dpg.plot(pos=[graph_x_pos, 510], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis5", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis5")
                     dpg.add_line_series([], [], label="signal", parent="y_axis5", tag="signal_series5")
-                dpg.add_text("EMG Signal 6", pos=[10, 610])
-                with dpg.plot(pos=[10, 630], height=100, width=950):
+                dpg.add_text("EMG Signal 6", pos=[graph_x_pos, 610])
+                with dpg.plot(pos=[graph_x_pos, 630], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis6", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis6")
                     dpg.add_line_series([], [], label="signal", parent="y_axis6", tag="signal_series6")
-                dpg.add_text("EMG Signal 7", pos=[10, 730])
-                with dpg.plot(pos=[10, 750], height=100, width=950):
+                dpg.add_text("EMG Signal 7", pos=[graph_x_pos, 730])
+                with dpg.plot(pos=[graph_x_pos, 750], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis7", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis7")
                     dpg.add_line_series([], [], label="signal", parent="y_axis7", tag="signal_series7")
-                dpg.add_text("EMG Signal 8", pos=[10, 850])
-                with dpg.plot(pos=[10, 870], height=100, width=950):
+                dpg.add_text("EMG Signal 8", pos=[graph_x_pos, 850])
+                with dpg.plot(pos=[graph_x_pos, 870], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis8", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis8")
                     dpg.add_line_series([], [], label="signal", parent="y_axis8", tag="signal_series8")
@@ -319,19 +346,33 @@ class EMGGUI():
 
 
     def db_connect(self):
-        self.db_connection = pymysql.connect(host=self.database['host'],
-                                        user=self.database['user'],
-                                        db=self.database['schema'],
-                                        charset='utf8mb4',
-                                        cursorclass=pymysql.cursors.DictCursor)
+        try:
+            self.db_connection = pymysql.connect(host=self.database['host'],
+                                            user=self.database['user'],
+                                            db=self.database['schema'],
+                                            charset='utf8mb4',
+                                            cursorclass=pymysql.cursors.DictCursor)
+            if self.db_connection: 
+                self.db_connected = True
+                self.batch_start_time = int(time.time())
+        except Exception as e:
+            print(e)
+
+    def db_disconnect(self):
+        try:
+            self.db_connection.close()
+            self.db_connected = False
+        except Exception as e:
+            print(e)            
         
-    def write_to_db(self, time, emg_sensor_data):
-        with self.connection.cursor() as cursor:
+    def write_to_db(self, time, emg_sensor_data: list):
+        # pass
+        with self.db_connection.cursor() as cursor:
                 sql = """
                     INSERT INTO `data`
-                    (`time`,`emg_sensor_1`,`emg_sensor_2`,`emg_sensor_3`,`emg_sensor_4`,`emg_sensor_5`,`emg_sensor_6`,`emg_sensor_7`,`emg_sensor_8`) 
+                    (`time`,`emg_sensor_1`,`emg_sensor_2`,`emg_sensor_3`,`emg_sensor_4`,`emg_sensor_5`,`emg_sensor_6`,`emg_sensor_7`,`emg_sensor_8`, `batch_start_time`) 
                     VALUES 
-                    (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """
                 cursor.execute(sql, 
                     (
@@ -344,9 +385,18 @@ class EMGGUI():
                     emg_sensor_data[5],
                     emg_sensor_data[6],
                     emg_sensor_data[7],
+                    self.batch_start_time,
                     )
                 )
-        self.connection.commit()
+        self.db_connection.commit()
+
+    def read_from_db(self):
+        pass
+        # with self.db_connection.cursor() as cursor:
+        #     sql = "SELECT * FROM `data`"
+        #     cursor.execute(sql)
+        #     result = cursor.fetchone()
+        #     print(result)        
 
     def put_to_sleep(self, sender, data):
         # Deep sleep command ######################################################################
@@ -525,6 +575,8 @@ class EMGGUI():
                             for _ in range(1,8):
                                 self.emg_x_axis[i].append(self.t)
                                 self.emg_y_axis[i].append(0)
+
+                            if self.db_connected:
                                 self.write_to_db(self.t, [0] * 8)
                     last_recv_characteristic = recv_characteristic
                     
@@ -534,8 +586,10 @@ class EMGGUI():
                         self.emg_x_axis[i].append(self.t)
                         self.emg_y_axis[i].append(emg1[i])
                         self.emg_y_axis[i].append(emg2[i])
-                        self.write_to_db(self.t, emg1[i])
-                        self.write_to_db(self.t, emg2[i])
+
+                    if self.db_connected:
+                        self.write_to_db(self.t, emg1)
+                        self.write_to_db(self.t, emg2)
 
                 else:
                     await asyncio.sleep(0.0001)
