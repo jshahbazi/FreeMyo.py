@@ -15,7 +15,7 @@ myo_armband:
     revision: d5060201-a904-deb9-4748-2c7f4a124842
 
 database:
-  address: localhost
+  host: localhost
   port: 5379
   user: root
   password: changeme
