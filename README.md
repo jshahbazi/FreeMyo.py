@@ -3,7 +3,14 @@ BLE Bleak-based Async Python interface to the Myo Armband that doesn't require a
 
 Based on specs from Thalmic Labs: https://github.com/thalmiclabs/myo-bluetooth and work done by PerlinWarp on pyomyo here: https://github.com/PerlinWarp/pyomyo and also Open-Myo: https://github.com/Alvipe/Open-Myo
 
-Initially this is CLI-based, but I'll be adding a GUI to it soon.
+This is a work in progress, but I'm adding to it often.
+
+---
+
+### Troubleshooting:
+
+- If you're not sure about the Device UUID, download an app like [BlueSee](https://apps.apple.com/us/app/bluesee-ble-debugger/id1336679524?mt=12) or [Lightblue](https://apps.apple.com/us/app/lightblue/id557428110) and do a scan.  It'll come up under the name Myo and you can just copy the Device ID from there.
+- If you're sure you have the correct UUID and the Myo still isn't connecting, try draining the battery.  I don't know if it keeps any information about previous pairings, but it will drop that info when the battery is drained enough.  Personally I noticed when the battery got down to 2 or 3%, I was able to connect and didn't have any issues after that.
 
 ---
 
