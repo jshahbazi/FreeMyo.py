@@ -6,6 +6,12 @@ Based on specs from Thalmic Labs: https://github.com/thalmiclabs/myo-bluetooth a
 This is a work in progress, but I'm adding to it often.
 
 ---
+### Screenshots
+
+![myo_gui.py](assets/screenshot1.png)
+
+
+---
 ### Requirements
 
 - Python 3.10 (due to the use of the `match` expression)
