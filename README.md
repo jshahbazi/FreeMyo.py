@@ -3,7 +3,7 @@ BLE Bleak-based Async Python interface to the Myo Armband that doesn't require a
 
 Based on specs from Thalmic Labs: https://github.com/thalmiclabs/myo-bluetooth and work done by PerlinWarp on pyomyo here: https://github.com/PerlinWarp/pyomyo and also Open-Myo: https://github.com/Alvipe/Open-Myo
 
-This is a work in progress, but I'm adding to it often.
+This is a work in progress.
 
 ---
 ### Screenshots
