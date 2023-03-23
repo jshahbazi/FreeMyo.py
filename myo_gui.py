@@ -1,7 +1,7 @@
 import asyncio, time, struct, yaml
 import dearpygui.dearpygui as dpg
 from bleak import BleakClient, BleakError
-
+import pymysql.cursors
 
 CLASSIFIER_EVENT_TYPES = {
     1: 'ARM_SYNCED',
@@ -98,7 +98,7 @@ class EMGGUI():
         self.running = False
         self.shutdown_event = asyncio.Event()
         self.is_paused = False
-        self.window_size = 200 * 30 # 200 times a second * 30 seconds
+        self.window_size = 200 * 30 # 200 Hz * 30 seconds
         self.emg_channels = 8
         self.start_time = time.time()
         self.t = 0
@@ -120,6 +120,16 @@ class EMGGUI():
         self.device_info_characteristic = device_config['myo_armband']['characteristics']['device_info']
         self.battery_level_characteristic = device_config['myo_armband']['characteristics']['battery_level']
         self.revision_characteristic = device_config['myo_armband']['characteristics']['revision']
+
+        self.database = {}
+        self.database['host'] = device_config['database']['host']
+        self.database['port'] = device_config['database']['port']
+        self.database['user'] = device_config['database']['user']
+        self.database['password'] = device_config['database']['password']
+        self.database['schema'] = device_config['database']['schema']
+        self.database['table'] = device_config['database']['table']
+
+        self.batch_start_time = 0
         
         self.emg_mode = EMG_MODE['OFF']
         self.classifier_mode = CLASSIFIER_MODE['DISABLED']
@@ -131,14 +141,16 @@ class EMGGUI():
             self.emg_x_axis.append([0] * self.window_size)
             self.emg_y_axis.append([0] * self.window_size)
 
+        self.db_connection = None
+        self.db_connected = False
 
         dpg.create_context()    
 
     def build_gui(self):
         with dpg.font_registry():
-            font_regular_12 = dpg.add_font("fonts/Inter-Regular.ttf", 14)
-            font_regular_14 = dpg.add_font("fonts/Inter-Regular.ttf", 18)
-            font_regular_24 = dpg.add_font("fonts/DroidSansMono.otf", 36)         
+            font_regular_16 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 16)
+            font_regular_20 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 20)
+            font_regular_36 = dpg.add_font("fonts/SF-Pro-Display-Regular.otf", 36)         
 
         with dpg.theme() as data_theme:
             with dpg.theme_component(dpg.mvAll):
@@ -185,114 +197,147 @@ class EMGGUI():
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (36, 40, 42), category=dpg.mvThemeCat_Core)
                 dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (36, 40, 42), category=dpg.mvThemeCat_Core)
 
-        with dpg.window(tag="main_window", width=1440, height=1024) as window:
-            dpg.add_text("FreeMyo", pos=[40, 40])
-            dpg.bind_item_font(dpg.last_item(), font_regular_24)
+        
+        x_pos = 40
+        y_pos = 0
+        with dpg.window(tag="main_window", width=1440, height=1024) as window:            
+            y_pos += 40
+            dpg.add_text("FreeMyo", pos=[x_pos, y_pos])
+            dpg.bind_item_font(dpg.last_item(), font_regular_36)
 
-            dpg.add_text("Connection Status:", pos=[40, 92])
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_button(label="Disconnected", pos=[155, 90], width=150, show=True, tag="disconnected_button")
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            y_pos += 50
+            dpg.add_text("Connection Status:", pos=[x_pos, y_pos+2])
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
+            dpg.add_button(label="Disconnected", pos=[x_pos+115, y_pos], width=150, show=True, tag="disconnected_button")
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), connection_disconnected_button_theme)            
-            dpg.add_button(label="Connected", pos=[155, 90], width=150, show=False, tag="connected_button")
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.add_button(label="Connected", pos=[x_pos+115, y_pos], width=150, show=False, tag="connected_button")
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), connection_connected_button_theme)            
-            dpg.add_button(label="Connecting...", pos=[155, 90], width=150, show=False, tag="connecting_button")
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.add_button(label="Connecting...", pos=[x_pos+115, y_pos], width=150, show=False, tag="connecting_button")
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), connection_connecting_button_theme)            
 
-            with dpg.child_window(height=100, width=200, pos=[35, 160]):
+            y_pos += 50
+            with dpg.child_window(height=100, width=200, pos=[x_pos-5, y_pos]):
                 dpg.add_text("Battery Level", pos=[10, 10])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)
                 dpg.add_button(label = self.battery_level, pos=[148, 12], width=60, tag="battery_level", small=True)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
                 dpg.add_text("Signal Strength (dBm)", pos=[10, 35])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)
                 dpg.add_button(label = self.signal_strength, pos=[140, 37], width=60, tag="signal_strength_value", small=True)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)       
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)       
 
                 dpg.add_text("Firmware Version", pos=[10, 70])
                 dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_12)
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)
                 dpg.add_button(label = self.firmware_revision, pos=[110, 72], width=40, tag="firmware_revision", small=True)
                 dpg.bind_item_theme(dpg.last_item(), input_theme)
-                dpg.bind_item_font(dpg.last_item(), font_regular_14)                               
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)                               
 
-            dpg.add_text("EMG Mode", pos=[40, 300])
+            y_pos += 140
+            dpg.add_text("EMG Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[110, 298], show=True, tag="emg_mode", callback=self.emg_mode_callback)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
+            dpg.add_combo(("RAW", "FILTERED", "FILTERED_50HZ", "OFF"), default_value="OFF", width=140, pos=[x_pos+70, y_pos-2], show=True, tag="emg_mode", callback=self.emg_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
-            dpg.add_text("Classifier Mode", pos=[40, 340])
+            y_pos += 40
+            dpg.add_text("Classifier Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("ENABLED", "DISABLED"), default_value="DISABLED", width=115, pos=[135, 338], show=True, tag="classifier_mode", callback=self.classifier_mode_callback)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
+            dpg.add_combo(("ENABLED", "DISABLED"), default_value="DISABLED", width=115, pos=[x_pos+95, y_pos-2], show=True, tag="classifier_mode", callback=self.classifier_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
-            dpg.add_text("IMU Mode", pos=[40, 380])
+            y_pos += 40
+            dpg.add_text("IMU Mode", pos=[x_pos, y_pos])
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_combo(("OFF", "SEND_DATA", "SEND_EVENTS", "SEND_ALL", "SEND_RAW"), default_value="OFF", width=140, pos=[110, 378], show=True, tag="imu_mode", callback=self.imu_mode_callback)
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
+            dpg.add_combo(("OFF", "SEND_DATA", "SEND_EVENTS", "SEND_ALL", "SEND_RAW"), default_value="OFF", width=140, pos=[x_pos+70, y_pos-2], show=True, tag="imu_mode", callback=self.imu_mode_callback)
             dpg.bind_item_theme(dpg.last_item(), center_button_theme)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
 
-            dpg.add_text("Pose", pos=[40, 452])
-            dpg.bind_item_font(dpg.last_item(), font_regular_12)
-            dpg.add_button(label = "REST", pos=[75, 454], width=60, tag="pose_display", small=True)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            y_pos += 70
+            dpg.add_text("Pose", pos=[x_pos, y_pos])
+            dpg.bind_item_font(dpg.last_item(), font_regular_16)
+            dpg.add_button(label = "REST", pos=[x_pos+35, y_pos+2], width=60, tag="pose_display", small=True)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), input_theme)
 
-            dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[40, 900], show=True, tag="sleep_button",callback=self.put_to_sleep)
-            dpg.bind_item_font(dpg.last_item(), font_regular_14)
+            y_pos += 60
+            with dpg.child_window(height=100, width=300, pos=[x_pos-5, y_pos]):    
+                dpg.add_text("Database Status:", pos=[12, 10])
+                dpg.bind_item_font(dpg.last_item(), font_regular_16)  
+                dpg.add_button(label="Disconnected", pos=[125, 10], width=150, show=True, tag="disconnected_database_button")
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
+                dpg.bind_item_theme(dpg.last_item(), connection_disconnected_button_theme)            
+                dpg.add_button(label="Connected", pos=[125, 10], width=150, show=False, tag="connected_database_button")
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
+                dpg.bind_item_theme(dpg.last_item(), connection_connected_button_theme)                        
+                dpg.add_button(label="Connect", pos=[10, 40], width=60, tag="database_button", small=True, callback=self.db_connect)
+                dpg.bind_item_theme(dpg.last_item(), input_theme)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)
+                dpg.add_button(label="Disconnect", pos=[10, 70], width=60, tag="database_button2", small=True, callback=self.db_disconnect)
+                dpg.bind_item_theme(dpg.last_item(), input_theme)
+                dpg.bind_item_font(dpg.last_item(), font_regular_20)            
+
+            y_pos += 400
+            dpg.add_button(label="Deep Sleep", width=120, height=40, pos=[x_pos, y_pos], show=True, tag="sleep_button",callback=self.put_to_sleep)
+            dpg.bind_item_font(dpg.last_item(), font_regular_20)
             dpg.bind_item_theme(dpg.last_item(), stop_button_theme)
 
 
-            with dpg.child_window(height=980, width=980, pos=[420, 40]):   #120
-                dpg.add_text("EMG Signal 1", pos=[10, 10])
-                with dpg.plot(pos=[10, 30], height=100, width=950):
+            x_pos = 420
+            y_pos = 40
+            with dpg.child_window(height=980, width=980, pos=[x_pos, y_pos]):
+                graph_x_pos = 10
+                graph_height = 100
+                graph_width = 950
+                dpg.add_text("EMG Signal 1", pos=[graph_x_pos, 10])
+                with dpg.plot(pos=[graph_x_pos, 30], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis1", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis1")
-                    dpg.add_line_series([], [], label="signal", parent="y_axis1", tag="signal_series1")
-                dpg.add_text("EMG Signal 2", pos=[10, 130])
-                with dpg.plot(pos=[10, 150], height=100, width=950):
+                    dpg.add_line_series([], [], label="signal", parent="y_axis1", tag="signal_series1")      
+                dpg.add_text("EMG Signal 2", pos=[graph_x_pos, 130])
+                with dpg.plot(pos=[graph_x_pos, 150], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis2", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis2")
                     dpg.add_line_series([], [], label="signal", parent="y_axis2", tag="signal_series2")
-                dpg.add_text("EMG Signal 3", pos=[10, 250]) 
-                with dpg.plot(pos=[10, 270], height=100, width=950):
+                dpg.add_text("EMG Signal 3", pos=[graph_x_pos, 250]) 
+                with dpg.plot(pos=[graph_x_pos, 270], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis3", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis3")
                     dpg.add_line_series([], [], label="signal", parent="y_axis3", tag="signal_series3")
-                dpg.add_text("EMG Signal 4", pos=[10, 370])
-                with dpg.plot(pos=[10, 390], height=100, width=950):
+                dpg.add_text("EMG Signal 4", pos=[graph_x_pos, 370])
+                with dpg.plot(pos=[graph_x_pos, 390], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis4", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis4")
                     dpg.add_line_series([], [], label="signal", parent="y_axis4", tag="signal_series4")
-                dpg.add_text("EMG Signal 5", pos=[10, 490])
-                with dpg.plot(pos=[10, 510], height=100, width=950):
+                dpg.add_text("EMG Signal 5", pos=[graph_x_pos, 490])
+                with dpg.plot(pos=[graph_x_pos, 510], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis5", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis5")
                     dpg.add_line_series([], [], label="signal", parent="y_axis5", tag="signal_series5")
-                dpg.add_text("EMG Signal 6", pos=[10, 610])
-                with dpg.plot(pos=[10, 630], height=100, width=950):
+                dpg.add_text("EMG Signal 6", pos=[graph_x_pos, 610])
+                with dpg.plot(pos=[graph_x_pos, 630], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis6", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis6")
                     dpg.add_line_series([], [], label="signal", parent="y_axis6", tag="signal_series6")
-                dpg.add_text("EMG Signal 7", pos=[10, 730])
-                with dpg.plot(pos=[10, 750], height=100, width=950):
+                dpg.add_text("EMG Signal 7", pos=[graph_x_pos, 730])
+                with dpg.plot(pos=[graph_x_pos, 750], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis7", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis7")
                     dpg.add_line_series([], [], label="signal", parent="y_axis7", tag="signal_series7")
-                dpg.add_text("EMG Signal 8", pos=[10, 850])
-                with dpg.plot(pos=[10, 870], height=100, width=950):
+                dpg.add_text("EMG Signal 8", pos=[graph_x_pos, 850])
+                with dpg.plot(pos=[graph_x_pos, 870], height=graph_height, width=graph_width):
                     dpg.add_plot_axis(dpg.mvXAxis, tag="x_axis8", no_tick_labels=True)
                     dpg.add_plot_axis(dpg.mvYAxis, tag="y_axis8")
                     dpg.add_line_series([], [], label="signal", parent="y_axis8", tag="signal_series8")
@@ -305,6 +350,64 @@ class EMGGUI():
         dpg.set_exit_callback(self.teardown)
         dpg.set_primary_window("main_window", True)
 
+
+    def db_connect(self):
+        try:
+            self.db_connection = pymysql.connect(host=self.database['host'],
+                                            user=self.database['user'],
+                                            # password=self.database['password'],
+                                            db=self.database['schema'],
+                                            charset='utf8mb4',
+                                            cursorclass=pymysql.cursors.DictCursor)
+            if self.db_connection: 
+                self.db_connected = True
+                self.batch_start_time = int(time.time())
+                dpg.configure_item("disconnected_database_button", show=False)
+                dpg.configure_item("connected_database_button", show=True)                  
+        except Exception as e:
+            print(e)
+
+    def db_disconnect(self):
+        try:
+            self.db_connection.close()
+            self.db_connected = False
+            dpg.configure_item("disconnected_database_button", show=True)
+            dpg.configure_item("connected_database_button", show=False)            
+        except Exception as e:
+            print(e)            
+        
+    def write_to_db(self, time, emg_sensor_data: list):
+        # pass
+        with self.db_connection.cursor() as cursor:
+                sql = """
+                    INSERT INTO `data`
+                    (`time`,`emg_sensor_1`,`emg_sensor_2`,`emg_sensor_3`,`emg_sensor_4`,`emg_sensor_5`,`emg_sensor_6`,`emg_sensor_7`,`emg_sensor_8`, `batch_start_time`) 
+                    VALUES 
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                cursor.execute(sql, 
+                    (
+                    time,
+                    emg_sensor_data[0],
+                    emg_sensor_data[1],
+                    emg_sensor_data[2],
+                    emg_sensor_data[3],
+                    emg_sensor_data[4],
+                    emg_sensor_data[5],
+                    emg_sensor_data[6],
+                    emg_sensor_data[7],
+                    self.batch_start_time,
+                    )
+                )
+        self.db_connection.commit()
+
+    def read_from_db(self):
+        pass
+        # with self.db_connection.cursor() as cursor:
+        #     sql = "SELECT * FROM `data`"
+        #     cursor.execute(sql)
+        #     result = cursor.fetchone()
+        #     print(result)        
 
     def put_to_sleep(self, sender, data):
         # Deep sleep command ######################################################################
@@ -394,20 +497,17 @@ class EMGGUI():
                 classifier_value = ARM_VALUES[value_id]
                 x_direction = XDIRECTION_VALUES[x_direction_id]
             case 'ARM_UNSYNCED':
-                pass
+                classifier_value = 'UNSYNCED'
             case 'POSE':
                 classifier_value = POSE_VALUES[value_id]
             case 'UNLOCKED':
-                pass
+                classifier_value = 'UNLOCKED'
             case 'LOCKED':
-                pass
+                classifier_value = 'LOCKED'
             case 'SYNC_FAILED':
-                pass
+                classifier_value = 'SYNC_FAILED'
             case _:
                 classifier_event = "Unknown Event"
-        # print_value = f"{classifier_value} " if classifier_value else ""
-        # print_value += f"-- {x_direction}" if x_direction else ""
-        # print(print_value) 
         dpg.configure_item("pose_display", label=classifier_value)
 
     def ble_notification_callback(self, handle, data):
@@ -463,6 +563,30 @@ class EMGGUI():
         time.sleep(0.1)      
         dpg.destroy_context()
 
+                    
+    # Data samples each contain 8 individual samples (one from each EMG sensor) and are broken up among 4 BLE characteristics
+    # because of BLE limitations.
+    # They are sent in order, so if one isn't received, it should be considered lost.
+    # EmgData0Characteristic  
+    #     Sample1
+    #     Sample2
+    # EmgData1Characteristic  
+    #     Sample3
+    #     Sample4
+    # EmgData2Characteristic  
+    #     Sample5
+    #     Sample6
+    # EmgData3Characteristic  
+    #     Sample7
+    #     Sample8
+    #
+    # and back to 0...
+    #
+    # EmgData0Characteristic  
+    #     Sample9
+    #     Sample10
+    #
+    # The actual characteristic number is added by the ble_notification_callback to the end of the packet when it is received
     async def process_emg_data(self):
         try:        
             last_recv_characteristic = 0
@@ -474,15 +598,18 @@ class EMGGUI():
                     emg1 = incoming_data[:8]
                     emg2 = incoming_data[8:16]
                     recv_characteristic = incoming_data[16]
-                    
-                    progression = (recv_characteristic - last_recv_characteristic) % 4
-                    if progression > 1:
-                        for i in range(1,progression):
+
+                    characteristic_progression = (recv_characteristic - last_recv_characteristic) % 4
+                    if characteristic_progression > 1:
+                        for i in range(1,characteristic_progression):
                             # print("packet not received")
                             self.t += 5
                             for _ in range(1,8):
                                 self.emg_x_axis[i].append(self.t)
                                 self.emg_y_axis[i].append(0)
+
+                            if self.db_connected:
+                                self.write_to_db(self.t, [0] * 8)
                     last_recv_characteristic = recv_characteristic
                     
                     self.t += 10
@@ -491,6 +618,10 @@ class EMGGUI():
                         self.emg_x_axis[i].append(self.t)
                         self.emg_y_axis[i].append(emg1[i])
                         self.emg_y_axis[i].append(emg2[i])
+
+                    if self.db_connected:
+                        self.write_to_db(self.t, emg1)
+                        self.write_to_db(self.t, emg2)
 
                 else:
                     await asyncio.sleep(0.0001)
@@ -507,7 +638,7 @@ class EMGGUI():
                     self.emg_y_axis[i] = self.emg_y_axis[i][-self.window_size:] 
                     dpg.set_value('signal_series' + str(i + 1), [self.emg_x_axis[i], self.emg_y_axis[i]])
                     dpg.fit_axis_data(   'x_axis' + str(i + 1))
-                    dpg.set_axis_limits( 'y_axis' + str(i + 1), -200, 200) 
+                    dpg.set_axis_limits( 'y_axis' + str(i + 1), -150, 150) 
         except KeyboardInterrupt:
             pass
  
@@ -552,6 +683,15 @@ class EMGGUI():
                 serial_number = '-'.join(map(str, info[0:6]))
                 print(f"Serial Number: {serial_number}")
                                 
+                # # Unlock command ######################################################################
+                # command = COMMAND['UNLOCK']
+                # lock_mode = UNLOCK_COMMAND['UNLOCK_HOLD']
+                # payload_byte_size = 1
+                # command_header = struct.pack('<3B', command, payload_byte_size, lock_mode)
+                # await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
+                # #######################################################################################
+
+
                 # Set the LED to a very nice purple
                 command = COMMAND['LED']
                 payload = [128, 128, 255, 128, 128, 255] # first 3 bytes is the logo color, second 3 bytes is the bar color
@@ -560,25 +700,13 @@ class EMGGUI():
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)
                             
                 # # send a short vibration to signify connection
-                # command = COMMAND['VIBRATE'] 
-                # vibration_type = VIBRATION_DURATION['SHORT']
-                # payload_byte_size = 1
-                # command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
-                # await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
-                
-                # Extended Vibration mode ######################################################################
-                command = COMMAND['EXTENDED_VIBRATION'] 
-                steps = b''
-                # number_of_steps = 3 # set the number of times to vibrate        
-                # for _ in range(number_of_steps):
-                #     duration = 1000 # duration (in ms) of the vibration step
-                #     strength = 255 # strength of vibration step (0 - motor off, 255 - full speed)
-                #     steps += struct.pack('<HB', duration, strength)           
-                steps = struct.pack('<HBHB', 100, 100, 300, 200)
-                payload_byte_size = len(steps)
-                command_header = struct.pack('<' + 'BB' + payload_byte_size * 'B', command, payload_byte_size, *steps)
+                command = COMMAND['VIBRATE'] 
+                vibration_type = VIBRATION_DURATION['SHORT']
+                payload_byte_size = 1
+                command_header = struct.pack('<3B', command, payload_byte_size, vibration_type)
                 await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
-
+                await client.write_gatt_char(self.command_characteristic, command_header, response=True)      
+                
 
                 try:
                     while not self.shutdown_event.is_set():
@@ -628,5 +756,5 @@ async def main():
 if __name__ == '__main__':
     try:
         asyncio.run(main())
-    except (KeyboardInterrupt, RuntimeError):
+    except (KeyboardInterrupt): #, RuntimeError):
         pass
